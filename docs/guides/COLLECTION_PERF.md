@@ -1,6 +1,6 @@
 # 采集性能指南（磁盘与热路径）
 
-本文落实设计方案中的硬约束，供 Agent 实现与 Code Review 使用。
+本文落实 [设计方案](../DESIGN.md) 中的硬约束，供 Agent 实现与 Code Review 使用。文档入口见 [../README.md](../README.md)。
 
 ## 1. 热路径允许的操作
 

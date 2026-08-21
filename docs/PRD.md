@@ -62,7 +62,7 @@ ResourceHub 是一个多服务器资源监控系统：各机部署轻量 Agent�
 - [ ] 通知渠道集成  
 - [ ] 更细权限与审计  
 
-详见 [STORAGE_ATTRIBUTION_AND_QUOTA.md](./STORAGE_ATTRIBUTION_AND_QUOTA.md)。
+详见 [guides/STORAGE_ATTRIBUTION_AND_QUOTA.md](./guides/STORAGE_ATTRIBUTION_AND_QUOTA.md)。
 
 ---
 

@@ -4,7 +4,7 @@
 > 1）磁盘快满时，如何定位「空间被谁占」？  
 > 2）如何对用户目录下各文件夹做**软限额**，超限时告警/提醒（不阻止写入）？  
 >  
-> 均属于 **慢路径 / 策略层**，不得进入 Agent 热路径心跳。详见 [COLLECTION_PERF.md](./COLLECTION_PERF.md)、[DESIGN.md](./DESIGN.md)。  
+> 均属于 **慢路径 / 策略层**，不得进入 Agent 热路径心跳。详见 [COLLECTION_PERF.md](./COLLECTION_PERF.md)、[../DESIGN.md](../DESIGN.md)。  
 >  
 > **已确认：** 目录限额只做软限制（告警与提醒），不做 OS 硬配额。
 

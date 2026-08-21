@@ -101,7 +101,7 @@ for each mount in filtered_mounts:
 
 `statfs` 只能回答「盘还剩多少」，不能回答「谁占用」或「某文件夹是否超限」。后两者见专题文档：
 
-→ **[STORAGE_ATTRIBUTION_AND_QUOTA.md](./STORAGE_ATTRIBUTION_AND_QUOTA.md)**
+→ **[guides/STORAGE_ATTRIBUTION_AND_QUOTA.md](./guides/STORAGE_ATTRIBUTION_AND_QUOTA.md)**
 
 摘要：
 
@@ -378,7 +378,7 @@ AlertEvent
 - **3a** 异步目录 Top-N 下钻 + 报告缓存 + 大文件 Top-N（定位「谁占用」）  
 - **3b** QuotaPolicy（如 `/home/*/*` 每文件夹限额）+ 定向扫描 + **超限告警/提醒**（软限制，不拦写）  
 
-细节见 [STORAGE_ATTRIBUTION_AND_QUOTA.md](./STORAGE_ATTRIBUTION_AND_QUOTA.md)。
+细节见 [guides/STORAGE_ATTRIBUTION_AND_QUOTA.md](./guides/STORAGE_ATTRIBUTION_AND_QUOTA.md)。
 
 ### Phase 4 — 硬化
 
@@ -430,7 +430,10 @@ AlertEvent
 
 ```text
 ResourceHub/
-  docs/                 # 设计与 API 文档
+  docs/                 # 文档入口：docs/README.md
+    PRD.md
+    DESIGN.md
+    guides/             # 专题旁路
   agent/                # 采集端
   server/               # 后端
   web/                  # 前端
