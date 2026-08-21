@@ -62,15 +62,16 @@ func collectDisks(cfg Config) ([]Disk, time.Duration) {
 
 可选：仅监控 `allow_mount_prefixes`（如 `/`, `/data`, `/var`）。
 
-## 5. 慢路径（目录分析）清单
+## 5. 慢路径（目录分析 / 软配额扫描）清单
 
-仅当产品明确开启时：
+仅当产品明确开启时（产品设计见 [STORAGE_ATTRIBUTION_AND_QUOTA.md](./STORAGE_ATTRIBUTION_AND_QUOTA.md)）：
 
 1. 独立队列与 worker，默认 concurrency = 1  
-2. 必须有：`root` 白名单、`max_depth`、`timeout`、`max_files`  
-3. Linux 建议：`ionice -c3`、降低 nice  
+2. 必须有：`root` 白名单、`max_depth`、`timeout`、`max_files`；配额扫描用 glob 展开目标，勿全盘 walk  
+3. Linux 建议：`ionice -c3`、降低 nice；不跨挂载点  
 4. 结果带 `started_at` / `finished_at` / `truncated` / `partial`  
 5. API 只提供「提交任务 + 查任务状态」，禁止同步扫盘接口  
+6. 若主机已有 XFS project / 用户配额，优先读账本，避免重复 walk
 
 ## 6. 测试门禁建议
 
