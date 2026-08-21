@@ -71,7 +71,7 @@ func collectDisks(cfg Config) ([]Disk, time.Duration) {
 3. Linux 建议：`ionice -c3`、降低 nice；不跨挂载点  
 4. 结果带 `started_at` / `finished_at` / `truncated` / `partial`  
 5. API 只提供「提交任务 + 查任务状态」，禁止同步扫盘接口  
-6. 若主机已有 XFS project / 用户配额，优先读账本，避免重复 walk
+6. 目录限额为软限制：扫描结果只用于告警/提醒，不在 Agent 侧拦截写入
 
 ## 6. 测试门禁建议
 

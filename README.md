@@ -11,7 +11,7 @@
 | [docs/PRD.md](docs/PRD.md) | 产品需求摘要 |
 | [docs/DESIGN.md](docs/DESIGN.md) | 总体设计方案（架构、API、分期） |
 | [docs/COLLECTION_PERF.md](docs/COLLECTION_PERF.md) | 采集性能硬约束（尤其磁盘） |
-| [docs/STORAGE_ATTRIBUTION_AND_QUOTA.md](docs/STORAGE_ATTRIBUTION_AND_QUOTA.md) | 大目录定位与目录配额告警 |
+| [docs/STORAGE_ATTRIBUTION_AND_QUOTA.md](docs/STORAGE_ATTRIBUTION_AND_QUOTA.md) | 大目录定位与目录软配额告警（仅提醒，不拦写） |
 
 ## 设计要点（摘要）
 
