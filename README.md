@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-**文档先行阶段。** 代码骨架尚未实现。
+**Phase 1 MVP 已实现**（Agent + Server + Web）。详见下方快速启动。
 
 **文档入口 → [docs/README.md](docs/README.md)**
 
@@ -21,13 +21,34 @@
 - **磁盘容量**使用 `statfs` 等 O(1) 接口，**禁止**在热路径使用 `du` / 递归 walk  
 - 目录级分析与软配额走**异步慢路径**（默关、限流）；限额仅告警/提醒，不拦写入  
 
+## 快速启动（本地）
+
+```bash
+# 1. 启动后端
+make server
+
+# 2. 另开终端：启动 agent（自动注册并上报）
+make agent
+
+# 3. 另开终端：启动前端
+make web
+# 浏览器打开 http://127.0.0.1:5173
+```
+
+Docker Compose：
+
+```bash
+cd deploy && docker compose up --build
+# Web: http://127.0.0.1:5173  API: http://127.0.0.1:8080
+```
+
 ## 计划中的仓库结构
 
 ```text
-agent/    # 采集端
-server/   # 后端 API
-web/      # 前端
-deploy/   # 部署与安装
+agent/    # Go 采集端（/proc + statfs）
+server/   # Go API + SQLite + 告警
+web/      # React 看板
+deploy/   # docker-compose
 docs/     # 设计与规范（入口 docs/README.md）
 ```
 

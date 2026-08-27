@@ -1,0 +1,22 @@
+services:
+  server:
+    build:
+      context: ../server
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - server-data:/data
+    command: ["-addr", ":8080", "-db", "/data/resourcehub.db"]
+
+  web:
+    build:
+      context: ../web
+      dockerfile: Dockerfile
+    ports:
+      - "5173:80"
+    depends_on:
+      - server
+
+volumes:
+  server-data:
