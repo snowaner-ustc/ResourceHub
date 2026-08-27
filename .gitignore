@@ -1,0 +1,16 @@
+# Binaries & data
+*.db
+.resourcehub-token
+server/server
+agent/agent
+
+# Go
+vendor/
+
+# Node
+web/node_modules/
+web/dist/
+
+# IDE
+.idea/
+.vscode/
