@@ -4,7 +4,11 @@
 
 ## 当前状态
 
+<<<<<<< HEAD
 **Phase 1 MVP 已实现**（Agent + Server + Web）。详见下方快速启动。
+=======
+**文档先行阶段。** 代码骨架尚未实现。
+>>>>>>> origin/main
 
 **文档入口 → [docs/README.md](docs/README.md)**
 
@@ -21,6 +25,7 @@
 - **磁盘容量**使用 `statfs` 等 O(1) 接口，**禁止**在热路径使用 `du` / 递归 walk  
 - 目录级分析与软配额走**异步慢路径**（默关、限流）；限额仅告警/提醒，不拦写入  
 
+<<<<<<< HEAD
 ## 快速启动（本地）
 
 ```bash
@@ -49,6 +54,15 @@ agent/    # Go 采集端（/proc + statfs）
 server/   # Go API + SQLite + 告警
 web/      # React 看板
 deploy/   # docker-compose
+=======
+## 计划中的仓库结构
+
+```text
+agent/    # 采集端
+server/   # 后端 API
+web/      # 前端
+deploy/   # 部署与安装
+>>>>>>> origin/main
 docs/     # 设计与规范（入口 docs/README.md）
 ```
 
