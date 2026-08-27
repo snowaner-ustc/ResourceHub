@@ -73,6 +73,16 @@ func collectDisks(cfg Config) ([]Disk, time.Duration) {
 5. API 只提供「提交任务 + 查任务状态」，禁止同步扫盘接口  
 6. 目录限额为软限制：扫描结果只用于告警/提醒，不在 Agent 侧拦截写入
 
+## 7. 进程采集中路径（Phase 2）
+
+见 [PROCESS_MONITORING.md](./PROCESS_MONITORING.md)。要点：
+
+1. **30s 独立 ticker**，不与 10s CPU/磁盘心跳合并  
+2. 允许 `readdir("/proc")` + 读 `stat`；禁止 `ps aux` / `top` 子进程  
+3. 必须有 `scan_timeout_ms`；超时 `partial=true`  
+4. 僵尸（state=`Z`）计数必报；`zombie > 0` 时附带 PID/ppid/comm 明细  
+5. Top CPU 需两次采样差分；Top RSS 单次排序即可  
+
 ## 6. 测试门禁建议
 
 - 单元测试：mock 挂载表 + statfs，断言不调用 walk  
