@@ -1,6 +1,7 @@
 package alerts
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -9,12 +10,21 @@ import (
 )
 
 type Config struct {
-	DiskWarningPercent  float64
-	DiskCriticalPercent float64
+	DiskWarningPercent   float64
+	DiskCriticalPercent  float64
+	ProcessCountWarning  int
+	ZombieCriticalCount  int
+	ZombiePersistAfter   time.Duration
 }
 
 func DefaultConfig() Config {
-	return Config{DiskWarningPercent: 80, DiskCriticalPercent: 90}
+	return Config{
+		DiskWarningPercent:  80,
+		DiskCriticalPercent: 90,
+		ProcessCountWarning: 2000,
+		ZombieCriticalCount: 10,
+		ZombiePersistAfter:  5 * time.Minute,
+	}
 }
 
 type Evaluator struct {
@@ -52,6 +62,74 @@ func (e *Evaluator) EvaluateSnapshot(host *models.Host, snap *models.MetricSnaps
 			return err
 		}
 	}
+	if err := e.evaluateProcesses(host, snap); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (e *Evaluator) evaluateProcesses(host *models.Host, snap *models.MetricSnapshot) error {
+	if snap.Processes == nil {
+		return nil
+	}
+	sum := snap.Processes.Summary
+	payload, _ := json.Marshal(map[string]any{
+		"zombie": sum.Zombie,
+		"total":  sum.Total,
+		"zombies": snap.Processes.Zombies,
+	})
+
+	if sum.Zombie >= 1 {
+		if err := e.fire(host, "process.zombie", models.AlertSeverityWarning,
+			fmt.Sprintf("zombie processes: %d on %s", sum.Zombie, host.Name), string(payload)); err != nil {
+			return err
+		}
+		existing, err := e.store.GetFiringAlert(host.ID, "process.zombie")
+		if err != nil {
+			return err
+		}
+		if existing != nil && time.Since(existing.FiredAt) >= e.config.ZombiePersistAfter {
+			if err := e.fire(host, "process.zombie.persistent", models.AlertSeverityCritical,
+				fmt.Sprintf("zombie processes persist >= %s: %d on %s", e.config.ZombiePersistAfter, sum.Zombie, host.Name),
+				string(payload)); err != nil {
+				return err
+			}
+		}
+	} else {
+		if err := e.store.ResolveAlerts(host.ID, "process.zombie"); err != nil {
+			return err
+		}
+		if err := e.store.ResolveAlerts(host.ID, "process.zombie.persistent"); err != nil {
+			return err
+		}
+		if err := e.store.ResolveAlerts(host.ID, "process.zombie.high"); err != nil {
+			return err
+		}
+	}
+
+	if sum.Zombie >= e.config.ZombieCriticalCount {
+		if err := e.fire(host, "process.zombie.high", models.AlertSeverityCritical,
+			fmt.Sprintf("high zombie count: %d on %s", sum.Zombie, host.Name), string(payload)); err != nil {
+			return err
+		}
+	} else if sum.Zombie > 0 {
+		if err := e.store.ResolveAlerts(host.ID, "process.zombie.high"); err != nil {
+			return err
+		}
+	}
+
+	ruleCount := "process.count.high"
+	if e.config.ProcessCountWarning > 0 && sum.Total > e.config.ProcessCountWarning {
+		if err := e.fire(host, ruleCount, models.AlertSeverityWarning,
+			fmt.Sprintf("process count high: %d > %d on %s", sum.Total, e.config.ProcessCountWarning, host.Name),
+			string(payload)); err != nil {
+			return err
+		}
+	} else {
+		if err := e.store.ResolveAlerts(host.ID, ruleCount); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -60,12 +138,18 @@ func (e *Evaluator) fire(host *models.Host, ruleType string, severity models.Ale
 	if err != nil {
 		return err
 	}
-	if existing != nil && existing.Severity == severity {
+	if existing != nil && existing.Severity == severity && existing.Message == message {
 		return nil
 	}
 	now := time.Now().UTC()
+	id := e.store.NewAlertID()
+	firedAt := now
+	if existing != nil {
+		id = existing.ID
+		firedAt = existing.FiredAt
+	}
 	return e.store.UpsertAlert(models.Alert{
-		ID:       e.store.NewAlertID(),
+		ID:       id,
 		HostID:   host.ID,
 		HostName: host.Name,
 		RuleType: ruleType,
@@ -73,7 +157,7 @@ func (e *Evaluator) fire(host *models.Host, ruleType string, severity models.Ale
 		Status:   models.AlertStatusFiring,
 		Message:  message,
 		Payload:  payload,
-		FiredAt:  now,
+		FiredAt:  firedAt,
 	})
 }
 
