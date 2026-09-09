@@ -328,7 +328,8 @@ AlertEvent
 - 内存 available < 阈值
 - GPU 显存 > 阈值
 - Agent 掉线（`last_seen` 超时）
-- **僵尸进程** `zombie >= 1`（warning）；持续或数量高 → critical（Phase 2，见进程专题）
+- **僵尸进程** `zombie >= 1` → warning；持续 ≥ 5min 或 `zombie >= 10` → critical（Phase 2）  
+- **进程总数偏多**（可选，软阈值，默认建议 2000）→ warning
 
 评估在 **Server 侧** 基于已入库快照进行，避免在 Agent 上堆复杂规则引擎（Agent 仅可做本地紧急自保护日志）。
 
@@ -441,17 +442,19 @@ AlertEvent
 
 1. 首批目标 OS：仅 Linux，还是需要 Windows？  
 2. GPU：是否只需 NVIDIA？是否有多卡训练机优先级？  
-3. 部署形态：内网 Docker Compose，还是已有 K8s？  
+3. ~~部署形态：内网 Docker Compose，还是已有 K8s？~~ → **非 K8s**（已确认，Compose / 普通主机）
 4. 认证：简单账号密码是否可接受 MVP？  
 5. 是否需要「目录级占用来源」在第一版就出现（建议放到 Phase 3）？  
 6. 历史数据保留多久（7 / 30 / 90 天）？  
 7. 用户目录根路径与「每文件夹」粒度（一级子目录 vs 任意深度）？  
 8. 软配额超限通知对象：仅运维，还是同时提醒目录 owner？  
-9. 僵尸告警：`>=1` 即 warning 是否足够？critical 是否要求「持续 5 分钟」？  
-
 ### 已确认决策
 
 - **目录限额仅软限制**：告警与提醒，不阻止写入；不做 OS 硬配额对接。  
+- **进程总数**：总览常显；可配软阈值（默认建议 2000）提醒「进程偏多」。  
+- **告警级别**：warning = 需留意；critical = 更严重/持续，应优先处理（仅提醒，不自动处置）。  
+- **僵尸告警**：出现 → warning；持续 ≥ 5 分钟或数量 ≥ 10 → critical。  
+- **环境**：非 K8s；普通多用户 Linux，按 Unix user 区分，不做容器/Pod 维度。  
 
 ---
 

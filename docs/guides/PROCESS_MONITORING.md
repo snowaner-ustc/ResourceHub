@@ -178,21 +178,22 @@ collect_duration_ms, partial, scanned_pids
 
 | 接口 | 说明 |
 |------|------|
-| `GET /api/v1/hosts` | 摘要增加 `zombie_count`、`process_total`（可选） |
+| `GET /api/v1/hosts` | 摘要增加 `zombie_count`、**`process_total`（必填）** |
 | `GET /api/v1/hosts/:id` | 快照内 `processes` 全文 |
 | `GET /api/v1/alerts` | 含 `process:zombie` 规则告警 |
 | `POST /api/v1/hosts/:id/process-scans` | （慢路径）提交全量/过滤扫描任务 |
 
 ### 6.2 UI
 
-**总览列表：**
+**总览列表（已确认）：**
 
-- 新列或徽章：`僵尸 2`（仅 > 0 时高亮）  
-- 可选：进程总数（muted）
+- **进程总数**一列（常显，muted 数字即可）— 便于一眼判断是否「太多」  
+- 僵尸徽章：`僵尸 N`（仅 `N > 0` 时高亮）  
+- 可选阈值：`process_total` 超过软阈值时标黄（默认建议 2000，可配）
 
 **单机详情 — 进程 Tab：**
 
-1. 状态汇总卡片（running / sleeping / zombie …）  
+1. 状态汇总卡片（含 **total** / running / sleeping / zombie …）  
 2. Top CPU / Top RSS 表格  
 3. **僵尸进程表**（zombie > 0 时置顶、标红）  
 4. 文案：`as_of` 采集时间；`partial` 时提示「进程过多，计数可能不完整」
@@ -201,21 +202,34 @@ collect_duration_ms, partial, scanned_pids
 
 - `process.zombie`：消息含 host、数量、部分 ppid/comm  
 
+### 6.3 严重度说明（warning vs critical）
+
+ResourceHub 告警只有提醒，不自动处置。两级含义：
+
+| 级别 | 含义 | 建议运维动作 |
+|------|------|--------------|
+| **warning（警告）** | 异常已出现，需留意；短期可观察 | 看板标黄；可进详情看明细 |
+| **critical（严重）** | 异常更严重或已持续，应优先处理 | 看板标红；通知更醒目；建议尽快排查 |
+
+对僵尸进程的默认策略（已确认方向，见 §13）：
+
+- 刚出现僵尸 → **warning**（「有僵尸了」）  
+- 持续一段时间仍不消失，或数量偏多 → **critical**（「该管了」）  
+
 ---
 
 ## 7. 告警规则（软监控，只提醒）
 
 | 规则 | 条件 | 严重度 | 恢复 |
 |------|------|--------|------|
-| `process.zombie` | `zombie >= 1` | warning | zombie = 0 |
-| `process.zombie.persistent` | `zombie >= 1` 持续 ≥ 5min | critical | zombie = 0 持续 2 个周期 |
-| `process.zombie.high` | `zombie >= 10` | critical | zombie < 10 |
-| `process.count.high`（可选） | total > 阈值 | warning | 低于阈值 |
+| `process.zombie` | `zombie >= 1` | **warning** | zombie = 0 |
+| `process.zombie.persistent` | `zombie >= 1` 持续 ≥ 5min | **critical** | zombie = 0 持续 2 个周期 |
+| `process.zombie.high` | `zombie >= 10` | **critical** | zombie < 10 |
+| `process.count.high` | `total` > 软阈值（默认 2000，可配） | **warning** | 低于阈值 |
 
 评估在 **Server** 侧，基于已入库快照；payload 附带 `zombies` 摘要供排查。
 
 **运维提示（文档/告警文案）：** 僵尸需**父进程** `wait()` 回收；杀父进程或修业务代码，监控本身不代为清理。
-
 ---
 
 ## 8. Agent 调度（更新）
@@ -272,29 +286,40 @@ process:
 |------|------|
 | **Phase 2a** | 层 A+B：汇总 + Top CPU/RSS + 详情页进程 Tab |
 | **Phase 2b** | 层 C：僵尸明细 + `process.zombie` 告警 + 列表徽章 |
-| **Phase 2c**（可选） | 层 D 异步全量扫描；按 user/comm 过滤 |
+| **Phase 2c**（可选） | 层 D 异步全量扫描；按 **Unix user / comm** 过滤（非 K8s） |
 
 建议 **2a 与 GPU 并行开发**；僵尸告警（2b）优先于全量扫描（2c）。
+
+**部署前提（已确认）：** 非 K8s；机器为普通多用户 Linux，按个人 Unix 账号区分即可，**不做** cgroup / container / Pod 维度。
 
 ---
 
 ## 11. 验收标准
 
 1. 30s 进程采集不阻塞 10s 快路径  
-2. 快照含 `summary.zombie`，zombie > 0 时可看到 PID/ppid/comm  
+2. 快照含 `summary.total` 与 `summary.zombie`；总览展示进程总数；zombie > 0 时可看到 PID/ppid/comm  
 3. Top CPU / Top RSS 各 ≤ 10 条，详情页可读  
 4. 列表/告警能发现僵尸；恢复后告警自动 resolve  
 5. 看板刷新不触发远程 `ps` / 同步扫 `/proc`  
+6. 无 K8s/容器维度依赖；可选按 Unix user 过滤  
 
 ---
 
 ## 12. 开放问题
 
-1. Top-N 默认 10 是否够用？是否需要按 user 过滤（如只看某训练账号）？  
-2. 总览是否展示「进程总数」，还是仅 zombie > 0 时突出？  
-3. 容器 / K8s 节点上是否需对接 cgroup / container 维度（Phase 2c+）？  
-4. 僵尸 `critical` 阈值：≥1 即 critical，还是「持续 5 分钟」才 critical？  
+1. Top-N 默认 10 是否够用？是否需要默认按 Unix user 过滤（如只看某训练账号）？  
+2. `process.count.high` 默认阈值 2000 是否合适（可按机器规模再调）？  
 
+---
+
+## 13. 已确认决策
+
+| 项 | 决策 |
+|----|------|
+| 进程总数 | **总览常显**；辅助判断「是不是太多」；可配软阈值告警 |
+| Critical 含义 | 比 warning 更严重/更紧急的提醒级别（见 §6.3）；**不自动处置** |
+| 僵尸升级策略 | 出现 → warning；**持续 ≥ 5 分钟**或数量 ≥ 10 → critical |
+| 运行环境 | **非 K8s**；普通多用户机；身份用 Unix user，不做容器维度 |
 ---
 
 ## 附录：算法伪代码
