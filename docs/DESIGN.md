@@ -1,7 +1,7 @@
 # ResourceHub 设计方案
 
 > 多服务器资源监控（CPU / GPU / 存储等）— 文档先行版本  
-> 状态：Draft · 版本：0.3 · 日期：2026-08-21
+> 状态：Draft · 版本：0.4 · 日期：2026-08-27
 
 ---
 
@@ -46,6 +46,9 @@
 | 磁盘 IO | 读写吞吐、IOPS、利用率（可选） | 来自 `/proc/diskstats` |
 | 网络 | 收发字节/包（可选） | 来自 `/proc/net/dev` |
 | 主机元信息 | hostname、OS、uptime、Agent 版本 | 注册与健康检查 |
+| 进程（Phase 2） | 状态汇总、Top CPU/RSS、僵尸列表 | 读 `/proc`；**30s 中路径**，不绑 10s 心跳 |
+
+专题见 → **[guides/PROCESS_MONITORING.md](./guides/PROCESS_MONITORING.md)**
 
 ### 2.2 用户角色
 
@@ -131,7 +134,8 @@ for each mount in filtered_mounts:
 | 负载 | `/proc/loadavg` | 一次读即可 |
 | GPU | NVML（`nvidia-smi` 作 fallback） | 优先库调用；缓存 1～5s |
 | 磁盘 IO | `/proc/diskstats` 差分 | 与容量查询分离 |
-| 进程 Top | 可选、低频 | 全量扫 `/proc` 有成本，默认关或 30s+ |
+| 进程 Top | `/proc/<pid>/stat` 等 | **30s 中路径**，与快路径分频；有超时/partial |
+| 僵尸检测 | 同上，state=`Z` | 汇总必含 zombie 计数；>0 时展开明细 + 告警 |
 
 ### 3.5 SLO（采集侧，初稿）
 
@@ -201,7 +205,7 @@ Host
   id, name, group, labels{}, agent_version, last_seen_at, status
 
 MetricSnapshot          # 每个 Host 最新一份（覆盖写）
-  host_id, collected_at, cpu{}, memory{}, gpus[], disks[], net{}, meta{}
+  host_id, collected_at, cpu{}, memory{}, gpus[], disks[], net{}, processes{}, meta{}
 
 MetricSample (时序)     # 降采样后的点
   host_id, metric_name, labels{}, ts, value
@@ -232,6 +236,21 @@ AlertEvent
 ```
 
 > `collect_duration_ms` 用于观测采集自身是否变慢，便于守住 §3.5 SLO。
+
+### 5.3 进程快照字段（中路径，Phase 2）
+
+摘要见 [guides/PROCESS_MONITORING.md](./guides/PROCESS_MONITORING.md)。核心结构：
+
+```json
+{
+  "summary": { "total": 412, "running": 3, "sleeping": 406, "zombie": 2, "partial": false },
+  "top_cpu": [{ "pid": 1001, "comm": "python", "cpu_percent": 85.2, "rss_bytes": 1073741824 }],
+  "top_rss": [{ "pid": 2002, "comm": "java", "rss_bytes": 8589934592 }],
+  "zombies": [{ "pid": 3003, "ppid": 1001, "comm": "worker", "state": "Z", "user": "alice" }]
+}
+```
+
+列表页冗余 `zombie_count` 与 **`process_total`** 到 `HostSummary`（进程总数总览常显）。
 
 ---
 
@@ -273,6 +292,10 @@ AlertEvent
 │       CPU / Mem / GPU / Disk(statfs)     │
 │       → enqueue report (async HTTP)      │
 │                                          │
+│  ticker(proc=30s) → ProcessCollector     │
+│       汇总 / Top CPU·RSS / 僵尸明细     │
+│       （独立超时，不阻塞 FastCollector）  │
+│                                          │
 │  ticker(io=15~30s) → IoCollector(可选)   │
 │                                          │
 │  SlowJobWorker (默认 off)                │
@@ -281,7 +304,7 @@ AlertEvent
 ```
 
 - FastCollector **同步采集、异步上报**（上报失败本地短队列，丢旧保新）
-- 可配置：`collect_interval`、`disk_mount_allowlist`、`enable_gpu`、`enable_proc_top`
+- 可配置：`collect_interval`、`disk_mount_allowlist`、`enable_gpu`、`process.enabled`、`process.interval`
 - 采集与上报解耦，避免网络抖动拖长采集临界区
 
 ### 7.2 默认频率建议
@@ -291,6 +314,7 @@ AlertEvent
 | 快路径采集 | 10s | 5s～60s |
 | 上报（可批量） | 10s | 与采集对齐或略合并 |
 | GPU | 与快路径同频或 15s | — |
+| 进程汇总 / Top-N / 僵尸 | 30s | 15s～120s |
 | 目录分析 | 关闭 | 手动 / ≥ 24h |
 
 ---
@@ -304,6 +328,8 @@ AlertEvent
 - 内存 available < 阈值
 - GPU 显存 > 阈值
 - Agent 掉线（`last_seen` 超时）
+- **僵尸进程** `zombie >= 1` → warning；持续 ≥ 5min 或 `zombie >= 10` → critical（Phase 2）  
+- **进程总数偏多**（可选，软阈值，默认建议 2000）→ warning
 
 评估在 **Server 侧** 基于已入库快照进行，避免在 Agent 上堆复杂规则引擎（Agent 仅可做本地紧急自保护日志）。
 
@@ -314,7 +340,7 @@ AlertEvent
 ### 9.1 页面
 
 1. **总览**：机器卡片/表格（状态、CPU、内存、最满磁盘%、GPU）  
-2. **机器详情**：资源曲线 + 磁盘挂载表 + GPU 列表  
+2. **机器详情**：资源曲线 + 磁盘挂载表 + GPU 列表 + **进程 Tab**（汇总 / Top / 僵尸）  
 3. **告警中心**  
 4. **接入指引**：如何安装 Agent、复制 token  
 
@@ -367,9 +393,10 @@ AlertEvent
 - Web：总览 + 详情  
 - 基础磁盘/掉线告警  
 
-### Phase 2 — GPU 与时序
+### Phase 2 — GPU、进程与时序
 
 - NVML GPU 指标  
+- **进程监控**：状态汇总、Top CPU/RSS、僵尸检测与告警（见 [guides/PROCESS_MONITORING.md](./guides/PROCESS_MONITORING.md)）  
 - 历史曲线与简单降采样  
 - 分组 / 标签  
 
@@ -395,6 +422,7 @@ AlertEvent
 | Agent 与 Server 时钟偏差 | 以 Server 入库时间为准，同时保留 Agent `collected_at` |
 | GPU 驱动/权限缺失 | 优雅降级，标记 `gpu: unavailable` |
 | 上报风暴 | 抖动上报、Server 限流、按 host 串行写最新快照 |
+| `/proc` 扫描拖慢心跳 | 进程采集中路径、独立 ticker、超时 partial |
 
 ---
 
@@ -406,6 +434,7 @@ AlertEvent
 4. 给出可量化的采集耗时/资源占用 SLO 初稿  
 5. 分阶段路线图可指导后续初始化代码与实现  
 6. 大目录定位与**目录软配额告警**方案有独立文档，且不污染热路径  
+7. **进程/僵尸监控**有独立文档，且与 10s 快路径分频采集  
 
 ---
 
@@ -413,16 +442,19 @@ AlertEvent
 
 1. 首批目标 OS：仅 Linux，还是需要 Windows？  
 2. GPU：是否只需 NVIDIA？是否有多卡训练机优先级？  
-3. 部署形态：内网 Docker Compose，还是已有 K8s？  
+3. ~~部署形态：内网 Docker Compose，还是已有 K8s？~~ → **非 K8s**（已确认，Compose / 普通主机）
 4. 认证：简单账号密码是否可接受 MVP？  
 5. 是否需要「目录级占用来源」在第一版就出现（建议放到 Phase 3）？  
 6. 历史数据保留多久（7 / 30 / 90 天）？  
 7. 用户目录根路径与「每文件夹」粒度（一级子目录 vs 任意深度）？  
 8. 软配额超限通知对象：仅运维，还是同时提醒目录 owner？  
-
 ### 已确认决策
 
 - **目录限额仅软限制**：告警与提醒，不阻止写入；不做 OS 硬配额对接。  
+- **进程总数**：总览常显；可配软阈值（默认建议 2000）提醒「进程偏多」。  
+- **告警级别**：warning = 需留意；critical = 更严重/持续，应优先处理（仅提醒，不自动处置）。  
+- **僵尸告警**：出现 → warning；持续 ≥ 5 分钟或数量 ≥ 10 → critical。  
+- **环境**：非 K8s；普通多用户 Linux，按 Unix user 区分，不做容器/Pod 维度。  
 
 ---
 
