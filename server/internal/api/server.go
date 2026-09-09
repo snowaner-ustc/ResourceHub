@@ -98,6 +98,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		CPU:                   req.CPU,
 		Memory:                req.Memory,
 		Disks:                 req.Disks,
+		Processes:             req.Processes,
 		CollectDurationMs:     req.CollectDurationMs,
 		DiskCollectDurationMs: req.DiskCollectDurationMs,
 	}

@@ -72,3 +72,4 @@ th { font-size: 0.85rem; color: #64748b; }
 .bar.crit > span { background: #ef4444; }
 
 .error { color: #b91c1c; }
+.warn-text { color: #b45309; font-weight: 600; }
