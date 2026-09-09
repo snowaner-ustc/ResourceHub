@@ -250,7 +250,7 @@ AlertEvent
 }
 ```
 
-列表页可冗余 `zombie_count` 到 `HostSummary`，便于总览筛选。
+列表页冗余 `zombie_count` 与 **`process_total`** 到 `HostSummary`（进程总数总览常显）。
 
 ---
 
