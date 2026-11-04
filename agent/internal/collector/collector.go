@@ -12,7 +12,9 @@ import (
 )
 
 type Collector struct {
-	lastCPU cpuSample
+	lastCPU   cpuSample
+	processes *ProcessCollector
+	lastProc  *models.ProcessStats
 }
 
 type cpuSample struct {
@@ -22,7 +24,9 @@ type cpuSample struct {
 }
 
 func New() *Collector {
-	return &Collector{}
+	return &Collector{
+		processes: NewProcessCollector(10, 500*time.Millisecond, 50),
+	}
 }
 
 func (c *Collector) Collect() (models.Snapshot, error) {
@@ -41,14 +45,33 @@ func (c *Collector) Collect() (models.Snapshot, error) {
 	if err != nil {
 		return models.Snapshot{}, err
 	}
-	return models.Snapshot{
+	snap := models.Snapshot{
 		CollectedAt:           time.Now().UTC(),
 		CPU:                   cpu,
 		Memory:                mem,
 		Disks:                 disks,
 		CollectDurationMs:     time.Since(start).Milliseconds(),
 		DiskCollectDurationMs: diskDur,
-	}, nil
+	}
+	if c.lastProc != nil {
+		p := *c.lastProc
+		snap.Processes = &p
+	}
+	return snap, nil
+}
+
+// CollectProcesses runs the mid-path process scan and caches the result for subsequent reports.
+func (c *Collector) CollectProcesses() models.ProcessStats {
+	cores := 1
+	if sample, n, err := readCPUStat(); err == nil {
+		_ = sample
+		if n > 0 {
+			cores = n
+		}
+	}
+	stats := c.processes.Collect(cores)
+	c.lastProc = &stats
+	return stats
 }
 
 func (c *Collector) collectCPU() (models.CPUStats, error) {

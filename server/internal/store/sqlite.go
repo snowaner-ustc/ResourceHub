@@ -122,6 +122,11 @@ func (s *Store) TouchHost(hostID string) error {
 
 func (s *Store) SaveMetrics(hostID string, snap models.MetricSnapshot) error {
 	snap.HostID = hostID
+	if snap.Processes == nil {
+		if prev, err := s.GetSnapshot(hostID); err == nil && prev != nil && prev.Processes != nil {
+			snap.Processes = prev.Processes
+		}
+	}
 	payload, err := json.Marshal(snap)
 	if err != nil {
 		return err
@@ -184,6 +189,10 @@ func (s *Store) ListHosts() ([]models.HostSummary, error) {
 					summary.MaxDiskUsedPercent = d.UsedPercent
 					summary.MaxDiskMountpoint = d.Mountpoint
 				}
+			}
+			if snap.Processes != nil {
+				summary.ProcessTotal = snap.Processes.Summary.Total
+				summary.ZombieCount = snap.Processes.Summary.Zombie
 			}
 		}
 		out = append(out, summary)
@@ -259,8 +268,8 @@ func (s *Store) GetFiringAlert(hostID, ruleType string) (*models.Alert, error) {
 	row := s.db.QueryRow(`SELECT id, host_id, rule_type, severity, status, message, payload, fired_at, resolved_at FROM alerts WHERE host_id = ? AND rule_type = ? AND status = ? ORDER BY fired_at DESC LIMIT 1`, hostID, ruleType, models.AlertStatusFiring)
 	var a models.Alert
 	var payload sql.NullString
-	var resolved sql.NullString
-	if err := row.Scan(&a.ID, &a.HostID, &a.RuleType, &a.Severity, &a.Status, &a.Message, &payload, &a.FiredAt, &resolved); err != nil {
+	var fired, resolved sql.NullString
+	if err := row.Scan(&a.ID, &a.HostID, &a.RuleType, &a.Severity, &a.Status, &a.Message, &payload, &fired, &resolved); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
@@ -268,6 +277,10 @@ func (s *Store) GetFiringAlert(hostID, ruleType string) (*models.Alert, error) {
 	}
 	if payload.Valid {
 		a.Payload = payload.String
+	}
+	if fired.Valid {
+		t, _ := time.Parse(time.RFC3339Nano, fired.String)
+		a.FiredAt = t
 	}
 	if resolved.Valid {
 		t, _ := time.Parse(time.RFC3339Nano, resolved.String)
@@ -308,12 +321,16 @@ func (s *Store) NewAlertID() string {
 func scanAlertRows(rows *sql.Rows) (*models.Alert, error) {
 	var a models.Alert
 	var payload sql.NullString
-	var resolved sql.NullString
-	if err := rows.Scan(&a.ID, &a.HostID, &a.HostName, &a.RuleType, &a.Severity, &a.Status, &a.Message, &payload, &a.FiredAt, &resolved); err != nil {
+	var fired, resolved sql.NullString
+	if err := rows.Scan(&a.ID, &a.HostID, &a.HostName, &a.RuleType, &a.Severity, &a.Status, &a.Message, &payload, &fired, &resolved); err != nil {
 		return nil, err
 	}
 	if payload.Valid {
 		a.Payload = payload.String
+	}
+	if fired.Valid {
+		t, _ := time.Parse(time.RFC3339Nano, fired.String)
+		a.FiredAt = t
 	}
 	if resolved.Valid {
 		t, _ := time.Parse(time.RFC3339Nano, resolved.String)

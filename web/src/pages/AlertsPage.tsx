@@ -26,7 +26,7 @@ export default function AlertsPage() {
   return (
     <div className="card">
       <h1>告警</h1>
-      <p className="muted">当前 firing 告警（磁盘阈值 / Agent 掉线）。</p>
+      <p className="muted">当前 firing 告警（磁盘阈值 / Agent 掉线 / 僵尸进程 / 进程数偏多）。</p>
       {alerts.length === 0 ? (
         <p className="muted">暂无活跃告警。</p>
       ) : (

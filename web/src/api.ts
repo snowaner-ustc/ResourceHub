@@ -9,11 +9,43 @@ export type HostSummary = {
   memory_used_percent: number
   max_disk_used_percent: number
   max_disk_mountpoint?: string
+  process_total: number
+  zombie_count: number
 }
 
 export type HostDetail = {
   host: HostSummary
   snapshot: MetricSnapshot | null
+}
+
+export type ProcessInfo = {
+  pid: number
+  ppid?: number
+  ppid_comm?: string
+  comm: string
+  user?: string
+  state?: string
+  cpu_percent: number
+  rss_bytes: number
+}
+
+export type ProcessStats = {
+  collected_at: string
+  summary: {
+    total: number
+    running: number
+    sleeping: number
+    uninterruptible: number
+    zombie: number
+    stopped: number
+    unknown: number
+    collect_duration_ms: number
+    partial: boolean
+    scanned_pids: number
+  }
+  top_cpu: ProcessInfo[]
+  top_rss: ProcessInfo[]
+  zombies: ProcessInfo[]
 }
 
 export type MetricSnapshot = {
@@ -33,6 +65,7 @@ export type MetricSnapshot = {
     used_percent: number
   }
   disks: DiskStats[]
+  processes?: ProcessStats
   collect_duration_ms: number
   disk_collect_duration_ms: number
 }
@@ -62,6 +95,7 @@ export type Alert = {
 }
 
 const API = '/api/v1'
+export const PROCESS_COUNT_WARN = 2000
 
 export async function fetchHosts(): Promise<HostSummary[]> {
   const res = await fetch(`${API}/hosts`)
