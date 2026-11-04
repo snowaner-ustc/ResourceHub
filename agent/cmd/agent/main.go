@@ -100,11 +100,9 @@ func main() {
 			p := col.CollectProcesses()
 			log.Printf("process scan: total=%d zombie=%d top_cpu=%d duration=%dms partial=%v",
 				p.Summary.Total, p.Summary.Zombie, len(p.TopCPU), p.Summary.CollectDurationMs, p.Summary.Partial)
-			report()
 		case <-gpuTicker.C:
 			g := col.CollectGPUs()
 			log.Printf("gpu scan: available=%v devices=%d duration=%dms", g.Available, len(g.Devices), g.CollectDurationMs)
-			report()
 		case <-sig:
 			return
 		}

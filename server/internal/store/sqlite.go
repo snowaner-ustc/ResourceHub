@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,8 +15,15 @@ import (
 )
 
 type Store struct {
-	db *sql.DB
+	db        *sql.DB
+	pruneMu   sync.Mutex
+	lastPrune time.Time
 }
+
+const (
+	sampleRetention = 7 * 24 * time.Hour
+	pruneEvery      = time.Hour
+)
 
 func Open(path string) (*Store, error) {
 	db, err := sql.Open("sqlite3", path+"?_foreign_keys=on")
@@ -194,8 +202,19 @@ func (s *Store) SaveMetrics(hostID string, snap models.MetricSnapshot) error {
 	if err := s.insertSamples(hostID, snap); err != nil {
 		return err
 	}
-	_ = s.PruneSamples(7 * 24 * time.Hour)
+	s.maybePrune()
 	return s.TouchHost(hostID)
+}
+
+func (s *Store) maybePrune() {
+	s.pruneMu.Lock()
+	defer s.pruneMu.Unlock()
+	if !s.lastPrune.IsZero() && time.Since(s.lastPrune) < pruneEvery {
+		return
+	}
+	if err := s.PruneSamples(sampleRetention); err == nil {
+		s.lastPrune = time.Now()
+	}
 }
 
 func (s *Store) insertSamples(hostID string, snap models.MetricSnapshot) error {

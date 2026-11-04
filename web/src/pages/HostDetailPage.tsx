@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import Sparkline from '../Sparkline'
 import {
@@ -61,6 +61,12 @@ export default function HostDetailPage() {
   const [hours, setHours] = useState(1)
   const [groupInput, setGroupInput] = useState('')
   const [error, setError] = useState('')
+  const groupDirty = useRef(false)
+
+  useEffect(() => {
+    groupDirty.current = false
+    setGroupInput('')
+  }, [id])
 
   useEffect(() => {
     if (!id) return
@@ -79,7 +85,7 @@ export default function HostDetailPage() {
         ])
         if (!alive) return
         setData(d)
-        setGroupInput(d.host.group || '')
+        if (!groupDirty.current) setGroupInput(d.host.group || '')
         setPoints(m.points || [])
       } catch (e) {
         if (alive) setError((e as Error).message)
@@ -110,6 +116,8 @@ export default function HostDetailPage() {
     if (!id) return
     try {
       const host = await patchHostGroup(id, groupInput.trim())
+      groupDirty.current = false
+      setGroupInput(host.group || '')
       setData({ ...data, host: { ...data.host, ...host } })
     } catch (err) {
       setError((err as Error).message)
@@ -126,7 +134,14 @@ export default function HostDetailPage() {
       </p>
       <form onSubmit={saveGroup} className="muted" style={{ marginBottom: 12 }}>
         分组：
-        <input value={groupInput} onChange={(e) => setGroupInput(e.target.value)} placeholder="例如 gpu / training" />
+        <input
+          value={groupInput}
+          onChange={(e) => {
+            groupDirty.current = true
+            setGroupInput(e.target.value)
+          }}
+          placeholder="例如 gpu / training"
+        />
         {' '}<button type="submit">保存</button>
       </form>
 
