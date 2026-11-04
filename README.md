@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-**Phase 1 MVP 已实现**（Agent + Server + Web）。详见下方快速启动。
+**Phase 2 进行中**：GPU（nvidia-smi）、历史曲线、CPU/内存/GPU 告警、机器分组。详见下方快速启动。
 
 **文档入口 → [docs/README.md](docs/README.md)**
 
@@ -20,6 +20,9 @@
 - **Agent 推送**指标到 Server；看板查询只读已存储快照，不在线扫远程机器  
 - **磁盘容量**使用 `statfs` 等 O(1) 接口，**禁止**在热路径使用 `du` / 递归 walk  
 - **进程监控**（30s 中路径）：进程总数、Top CPU/RSS、僵尸检测与告警  
+- **GPU**：nvidia-smi 采集利用率/显存；无卡则标记 unavailable  
+- **历史曲线**：SQLite 短时序，默认保留 7 天；详情页 1h/6h/24h  
+- **分组**：注册 `--group` 或详情页修改，总览可筛选  
 - 目录级分析与软配额走**异步慢路径**（默关、限流）；限额仅告警/提醒，不拦写入  
 
 ## 快速启动（本地）
@@ -55,4 +58,4 @@ docs/     # 设计与规范（入口 docs/README.md）
 
 ## 后续
 
-确认 [docs/DESIGN.md](docs/DESIGN.md) 中的开放问题后，进入 Phase 2（GPU、历史曲线等）。
+Phase 3 起：目录 Top-N 下钻与软配额告警。详见 [docs/DESIGN.md](docs/DESIGN.md)。

@@ -43,19 +43,19 @@ ResourceHub 是一个多服务器资源监控系统：各机部署轻量 Agent�
 
 ### P0（MVP 必须有）
 
-- [ ] 多机注册与在线状态  
-- [ ] CPU、内存、磁盘**挂载点容量**（statfs / 等价快速 API）  
-- [ ] Web 总览 + 单机详情（最新值）  
-- [ ] 磁盘使用率、Agent 掉线告警  
-- [ ] Agent 推送指标；API 只读已存储数据  
+- [x] 多机注册与在线状态  
+- [x] CPU、内存、磁盘**挂载点容量**（statfs / 等价快速 API）  
+- [x] Web 总览 + 单机详情（最新值）  
+- [x] 磁盘使用率、Agent 掉线告警  
+- [x] Agent 推送指标；API 只读已存储数据  
 
 ### P1
 
-- [ ] GPU（NVIDIA）利用率与显存  
-- [ ] **进程监控**：状态汇总、Top CPU/RSS、僵尸列表与告警  
-- [ ] 短时历史曲线  
-- [ ] 机器分组 / 标签  
-- [ ] CPU / 内存 / GPU 阈值告警  
+- [x] GPU（NVIDIA）利用率与显存  
+- [x] **进程监控**：状态汇总、Top CPU/RSS、僵尸列表与告警  
+- [x] 短时历史曲线  
+- [x] 机器分组 / 标签  
+- [x] CPU / 内存 / GPU 阈值告警  
 
 详见 [guides/PROCESS_MONITORING.md](./guides/PROCESS_MONITORING.md)。
 

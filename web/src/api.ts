@@ -2,6 +2,7 @@ export type HostSummary = {
   id: string
   name: string
   hostname: string
+  group?: string
   agent_version: string
   status: 'online' | 'offline'
   last_seen_at?: string
@@ -11,6 +12,9 @@ export type HostSummary = {
   max_disk_mountpoint?: string
   process_total: number
   zombie_count: number
+  gpu_count: number
+  max_gpu_util_percent: number
+  max_gpu_mem_percent: number
 }
 
 export type HostDetail = {
@@ -48,6 +52,26 @@ export type ProcessStats = {
   zombies: ProcessInfo[]
 }
 
+export type GPUDevice = {
+  index: number
+  name: string
+  uuid?: string
+  util_percent: number
+  memory_used_bytes: number
+  memory_total_bytes: number
+  memory_used_percent: number
+  temperature_c: number
+  power_watts: number
+}
+
+export type GPUStats = {
+  available: boolean
+  status: string
+  method?: string
+  collect_duration_ms: number
+  devices: GPUDevice[]
+}
+
 export type MetricSnapshot = {
   host_id: string
   collected_at: string
@@ -65,6 +89,7 @@ export type MetricSnapshot = {
     used_percent: number
   }
   disks: DiskStats[]
+  gpus?: GPUStats
   processes?: ProcessStats
   collect_duration_ms: number
   disk_collect_duration_ms: number
@@ -82,6 +107,18 @@ export type DiskStats = {
   collect_duration_ms: number
 }
 
+export type MetricPoint = {
+  metric: string
+  ts: string
+  value: number
+}
+
+export type MetricsSeries = {
+  from: string
+  to: string
+  points: MetricPoint[]
+}
+
 export type Alert = {
   id: string
   host_id: string
@@ -97,8 +134,9 @@ export type Alert = {
 const API = '/api/v1'
 export const PROCESS_COUNT_WARN = 2000
 
-export async function fetchHosts(): Promise<HostSummary[]> {
-  const res = await fetch(`${API}/hosts`)
+export async function fetchHosts(group = ''): Promise<HostSummary[]> {
+  const q = group ? `?group=${encodeURIComponent(group)}` : ''
+  const res = await fetch(`${API}/hosts${q}`)
   if (!res.ok) throw new Error('failed to load hosts')
   return res.json()
 }
@@ -106,6 +144,24 @@ export async function fetchHosts(): Promise<HostSummary[]> {
 export async function fetchHost(id: string): Promise<HostDetail> {
   const res = await fetch(`${API}/hosts/${id}`)
   if (!res.ok) throw new Error('failed to load host')
+  return res.json()
+}
+
+export async function patchHostGroup(id: string, group: string): Promise<HostSummary> {
+  const res = await fetch(`${API}/hosts/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ group }),
+  })
+  if (!res.ok) throw new Error('failed to update group')
+  return res.json()
+}
+
+export async function fetchHostMetrics(id: string, hours = 1, names?: string[]): Promise<MetricsSeries> {
+  const params = new URLSearchParams({ hours: String(hours) })
+  if (names?.length) params.set('names', names.join(','))
+  const res = await fetch(`${API}/hosts/${id}/metrics?${params}`)
+  if (!res.ok) throw new Error('failed to load metrics')
   return res.json()
 }
 

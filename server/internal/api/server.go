@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,14 +29,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/agent/metrics", s.handleMetrics)
 	mux.HandleFunc("/api/v1/hosts", s.handleHosts)
 	mux.HandleFunc("/api/v1/alerts", s.handleAlerts)
-	mux.Handle("/api/v1/hosts/", s.hostDetailHandler())
+	mux.Handle("/api/v1/hosts/", s.hostRoutes())
 	return cors(mux)
 }
 
 func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
@@ -98,6 +99,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		CPU:                   req.CPU,
 		Memory:                req.Memory,
 		Disks:                 req.Disks,
+		GPUs:                  req.GPUs,
 		Processes:             req.Processes,
 		CollectDurationMs:     req.CollectDurationMs,
 		DiskCollectDurationMs: req.DiskCollectDurationMs,
@@ -122,7 +124,7 @@ func (s *Server) handleHosts(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w)
 		return
 	}
-	hosts, err := s.store.ListHosts()
+	hosts, err := s.store.ListHosts(r.URL.Query().Get("group"))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -133,32 +135,103 @@ func (s *Server) handleHosts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, hosts)
 }
 
-func (s *Server) hostDetailHandler() http.Handler {
+func (s *Server) hostRoutes() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			methodNotAllowed(w)
-			return
-		}
-		id := strings.TrimPrefix(r.URL.Path, "/api/v1/hosts/")
-		if id == "" || strings.Contains(id, "/") {
+		rest := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/hosts/"), "/")
+		if rest == "" {
 			writeError(w, http.StatusNotFound, "not found")
 			return
 		}
-		host, err := s.store.HostByID(id)
-		if err != nil {
-			writeError(w, http.StatusNotFound, err.Error())
+		parts := strings.Split(rest, "/")
+		id := parts[0]
+		if len(parts) == 1 {
+			switch r.Method {
+			case http.MethodGet:
+				s.handleHostDetail(w, r, id)
+			case http.MethodPatch:
+				s.handleHostPatch(w, r, id)
+			default:
+				methodNotAllowed(w)
+			}
 			return
 		}
-		host.Token = ""
-		snap, err := s.store.GetSnapshot(id)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+		if len(parts) == 2 && parts[1] == "metrics" && r.Method == http.MethodGet {
+			s.handleHostMetrics(w, r, id)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"host":     host,
-			"snapshot": snap,
-		})
+		writeError(w, http.StatusNotFound, "not found")
+	})
+}
+
+func (s *Server) handleHostDetail(w http.ResponseWriter, r *http.Request, id string) {
+	host, err := s.store.HostByID(id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	host.Token = ""
+	snap, err := s.store.GetSnapshot(id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"host":     host,
+		"snapshot": snap,
+	})
+}
+
+func (s *Server) handleHostPatch(w http.ResponseWriter, r *http.Request, id string) {
+	var req models.HostPatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if err := s.store.UpdateHostGroup(id, req.Group); err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	host, err := s.store.HostByID(id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	host.Token = ""
+	writeJSON(w, http.StatusOK, host)
+}
+
+func (s *Server) handleHostMetrics(w http.ResponseWriter, r *http.Request, id string) {
+	q := r.URL.Query()
+	to := time.Now().UTC()
+	from := to.Add(-time.Hour)
+	if v := q.Get("from"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			from = t
+		}
+	}
+	if v := q.Get("to"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			to = t
+		}
+	}
+	if hours := q.Get("hours"); hours != "" {
+		if h, err := strconv.Atoi(hours); err == nil && h > 0 {
+			from = to.Add(-time.Duration(h) * time.Hour)
+		}
+	}
+	var names []string
+	if raw := q.Get("names"); raw != "" {
+		names = strings.Split(raw, ",")
+	}
+	pts, err := s.store.QuerySamples(id, names, from, to)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"from":   from,
+		"to":     to,
+		"points": pts,
 	})
 }
 

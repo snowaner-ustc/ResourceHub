@@ -1,6 +1,16 @@
-import { useEffect, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { fetchHost, formatBytes, formatPercent, HostDetail, ProcessInfo } from '../api'
+import Sparkline from '../Sparkline'
+import {
+  fetchHost,
+  fetchHostMetrics,
+  formatBytes,
+  formatPercent,
+  HostDetail,
+  MetricPoint,
+  patchHostGroup,
+  ProcessInfo,
+} from '../api'
 
 function ProcessTable({ title, rows, showParent }: { title: string; rows: ProcessInfo[]; showParent?: boolean }) {
   if (!rows.length) {
@@ -47,15 +57,36 @@ function ProcessTable({ title, rows, showParent }: { title: string; rows: Proces
 export default function HostDetailPage() {
   const { id } = useParams()
   const [data, setData] = useState<HostDetail | null>(null)
+  const [points, setPoints] = useState<MetricPoint[]>([])
+  const [hours, setHours] = useState(1)
+  const [groupInput, setGroupInput] = useState('')
   const [error, setError] = useState('')
+  const groupDirty = useRef(false)
+
+  useEffect(() => {
+    groupDirty.current = false
+    setGroupInput('')
+  }, [id])
 
   useEffect(() => {
     if (!id) return
     let alive = true
     const load = async () => {
       try {
-        const d = await fetchHost(id)
-        if (alive) setData(d)
+        const [d, m] = await Promise.all([
+          fetchHost(id),
+          fetchHostMetrics(id, hours, [
+            'cpu.usage_percent',
+            'memory.used_percent',
+            'disk.max_used_percent',
+            'gpu.max_util_percent',
+            'gpu.max_mem_percent',
+          ]),
+        ])
+        if (!alive) return
+        setData(d)
+        if (!groupDirty.current) setGroupInput(d.host.group || '')
+        setPoints(m.points || [])
       } catch (e) {
         if (alive) setError((e as Error).message)
       }
@@ -63,18 +94,56 @@ export default function HostDetailPage() {
     load()
     const t = setInterval(load, 10000)
     return () => { alive = false; clearInterval(t) }
-  }, [id])
+  }, [id, hours])
+
+  const series = useMemo(() => {
+    const by: Record<string, MetricPoint[]> = {}
+    for (const p of points) {
+      (by[p.metric] ||= []).push(p)
+    }
+    return by
+  }, [points])
 
   if (error) return <p className="error">{error}</p>
   if (!data) return <p className="muted">加载中…</p>
 
   const snap = data.snapshot
   const procs = snap?.processes
+  const gpus = snap?.gpus
+
+  const saveGroup = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!id) return
+    try {
+      const host = await patchHostGroup(id, groupInput.trim())
+      groupDirty.current = false
+      setGroupInput(host.group || '')
+      setData({ ...data, host: { ...data.host, ...host } })
+    } catch (err) {
+      setError((err as Error).message)
+    }
+  }
+
   return (
     <div className="card">
       <p><Link to="/">← 返回总览</Link></p>
       <h1>{data.host.name}</h1>
-      <p className="muted">{data.host.hostname} · <span className={`badge ${data.host.status}`}>{data.host.status}</span></p>
+      <p className="muted">
+        {data.host.hostname} · <span className={`badge ${data.host.status}`}>{data.host.status}</span>
+        {data.host.group ? ` · 分组 ${data.host.group}` : ''}
+      </p>
+      <form onSubmit={saveGroup} className="muted" style={{ marginBottom: 12 }}>
+        分组：
+        <input
+          value={groupInput}
+          onChange={(e) => {
+            groupDirty.current = true
+            setGroupInput(e.target.value)
+          }}
+          placeholder="例如 gpu / training"
+        />
+        {' '}<button type="submit">保存</button>
+      </form>
 
       {!snap ? (
         <p className="muted">尚无指标快照。</p>
@@ -85,10 +154,64 @@ export default function HostDetailPage() {
             <div className="stat"><div className="label">CPU</div><div className="value">{formatPercent(snap.cpu.usage_percent)}</div></div>
             <div className="stat"><div className="label">负载 1/5/15</div><div className="value" style={{ fontSize: '1rem' }}>{snap.cpu.load1.toFixed(2)} / {snap.cpu.load5.toFixed(2)} / {snap.cpu.load15.toFixed(2)}</div></div>
             <div className="stat"><div className="label">内存</div><div className="value">{formatPercent(snap.memory.used_percent)}</div></div>
-            <div className="stat"><div className="label">核心数</div><div className="value">{snap.cpu.cores}</div></div>
+            <div className="stat"><div className="label">GPU</div><div className="value">{gpus?.available ? `${gpus.devices.length} 卡` : '无'}</div></div>
             <div className="stat"><div className="label">进程数</div><div className="value">{procs?.summary.total ?? '—'}</div></div>
             <div className="stat"><div className="label">僵尸</div><div className="value">{procs?.summary.zombie ?? 0}</div></div>
           </div>
+
+          <h2>历史曲线</h2>
+          <p className="muted">
+            窗口：
+            {[1, 6, 24].map((h) => (
+              <button key={h} type="button" onClick={() => setHours(h)} style={{ marginRight: 8, fontWeight: hours === h ? 700 : 400 }}>
+                {h}h
+              </button>
+            ))}
+            （只读已存样本，默认保留 7 天）
+          </p>
+          <div className="charts">
+            <Sparkline title="CPU %" points={series['cpu.usage_percent'] || []} />
+            <Sparkline title="内存 %" points={series['memory.used_percent'] || []} color="#0d9488" />
+            <Sparkline title="最满磁盘 %" points={series['disk.max_used_percent'] || []} color="#d97706" />
+            {(series['gpu.max_util_percent']?.length || series['gpu.max_mem_percent']?.length) ? (
+              <>
+                <Sparkline title="GPU 利用率 %" points={series['gpu.max_util_percent'] || []} color="#7c3aed" />
+                <Sparkline title="GPU 显存 %" points={series['gpu.max_mem_percent'] || []} color="#db2777" />
+              </>
+            ) : null}
+          </div>
+
+          {gpus?.available ? (
+            <>
+              <h2>GPU（{gpus.method || 'nvidia'}）</h2>
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>名称</th>
+                    <th>利用率</th>
+                    <th>显存</th>
+                    <th>温度</th>
+                    <th>功耗</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {gpus.devices.map((g) => (
+                    <tr key={g.uuid || g.index}>
+                      <td>{g.index}</td>
+                      <td>{g.name}</td>
+                      <td>{formatPercent(g.util_percent)}</td>
+                      <td>{formatBytes(g.memory_used_bytes)} / {formatBytes(g.memory_total_bytes)} ({formatPercent(g.memory_used_percent)})</td>
+                      <td>{g.temperature_c ? `${g.temperature_c.toFixed(0)}°C` : '—'}</td>
+                      <td>{g.power_watts ? `${g.power_watts.toFixed(0)} W` : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          ) : (
+            <p className="muted">本机无 NVIDIA GPU，或 nvidia-smi 不可用。</p>
+          )}
 
           <h2>磁盘挂载（statfs）</h2>
           <table>

@@ -395,10 +395,11 @@ AlertEvent
 
 ### Phase 2 — GPU、进程与时序
 
-- NVML GPU 指标  
-- **进程监控**：状态汇总、Top CPU/RSS、僵尸检测与告警（见 [guides/PROCESS_MONITORING.md](./guides/PROCESS_MONITORING.md)）  
-- 历史曲线与简单降采样  
-- 分组 / 标签  
+- [x] **进程监控**：状态汇总、Top CPU/RSS、僵尸检测与告警  
+- [x] NVIDIA GPU 指标（nvidia-smi；无卡则 unavailable）  
+- [x] 短时历史曲线（SQLite 样本，默认 7 天，查询降采样）  
+- [x] 机器分组（注册 / 详情页 PATCH）  
+- [x] CPU / 内存 / GPU 持续超阈值告警  
 
 ### Phase 3 — 深度存储分析与软配额告警（谨慎开启）
 
