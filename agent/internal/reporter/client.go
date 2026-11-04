@@ -24,11 +24,12 @@ func New(baseURL string) *Client {
 	}
 }
 
-func (c *Client) Register(name, hostname, version string) (models.RegisterResponse, error) {
+func (c *Client) Register(name, hostname, version, group string) (models.RegisterResponse, error) {
 	body, _ := json.Marshal(map[string]string{
 		"name":          name,
 		"hostname":      hostname,
 		"agent_version": version,
+		"group":         group,
 	})
 	req, err := http.NewRequest(http.MethodPost, c.baseURL+"/api/v1/agent/register", bytes.NewReader(body))
 	if err != nil {

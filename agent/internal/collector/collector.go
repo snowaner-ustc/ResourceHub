@@ -15,6 +15,7 @@ type Collector struct {
 	lastCPU   cpuSample
 	processes *ProcessCollector
 	lastProc  *models.ProcessStats
+	lastGPU   *models.GPUStats
 }
 
 type cpuSample struct {
@@ -57,7 +58,17 @@ func (c *Collector) Collect() (models.Snapshot, error) {
 		p := *c.lastProc
 		snap.Processes = &p
 	}
+	if c.lastGPU != nil {
+		g := *c.lastGPU
+		snap.GPUs = &g
+	}
 	return snap, nil
+}
+
+func (c *Collector) CollectGPUs() models.GPUStats {
+	stats := collectGPUs(nil, 2*time.Second)
+	c.lastGPU = &stats
+	return stats
 }
 
 // CollectProcesses runs the mid-path process scan and caches the result for subsequent reports.

@@ -73,3 +73,12 @@ th { font-size: 0.85rem; color: #64748b; }
 
 .error { color: #b91c1c; }
 .warn-text { color: #b45309; font-weight: 600; }
+
+.charts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0 24px; }
+.chart { background: #f8fafc; border-radius: 8px; padding: 12px; }
+.chart .label { font-size: 0.85rem; color: #64748b; margin-bottom: 4px; }
+input, select, button { font: inherit; padding: 4px 8px; }
+
+@media (max-width: 800px) {
+  .charts { grid-template-columns: 1fr; }
+}

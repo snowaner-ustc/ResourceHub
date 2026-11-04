@@ -31,14 +31,35 @@ type DiskStats struct {
 	CollectDurationMs int64   `json:"collect_duration_ms"`
 }
 
+type GPUDevice struct {
+	Index             int     `json:"index"`
+	Name              string  `json:"name"`
+	UUID              string  `json:"uuid,omitempty"`
+	UtilPercent       float64 `json:"util_percent"`
+	MemoryUsedBytes   uint64  `json:"memory_used_bytes"`
+	MemoryTotalBytes  uint64  `json:"memory_total_bytes"`
+	MemoryUsedPercent float64 `json:"memory_used_percent"`
+	TemperatureC      float64 `json:"temperature_c"`
+	PowerWatts        float64 `json:"power_watts"`
+}
+
+type GPUStats struct {
+	Available         bool        `json:"available"`
+	Status            string      `json:"status"`
+	Method            string      `json:"method,omitempty"`
+	CollectDurationMs int64       `json:"collect_duration_ms"`
+	Devices           []GPUDevice `json:"devices"`
+}
+
 type Snapshot struct {
-	CollectedAt           time.Time      `json:"collected_at"`
-	CPU                   CPUStats       `json:"cpu"`
-	Memory                MemoryStats    `json:"memory"`
-	Disks                 []DiskStats    `json:"disks"`
-	Processes             *ProcessStats  `json:"processes,omitempty"`
-	CollectDurationMs     int64          `json:"collect_duration_ms"`
-	DiskCollectDurationMs int64          `json:"disk_collect_duration_ms"`
+	CollectedAt           time.Time     `json:"collected_at"`
+	CPU                   CPUStats      `json:"cpu"`
+	Memory                MemoryStats   `json:"memory"`
+	Disks                 []DiskStats   `json:"disks"`
+	GPUs                  *GPUStats     `json:"gpus,omitempty"`
+	Processes             *ProcessStats `json:"processes,omitempty"`
+	CollectDurationMs     int64         `json:"collect_duration_ms"`
+	DiskCollectDurationMs int64         `json:"disk_collect_duration_ms"`
 }
 
 type ProcessSummary struct {

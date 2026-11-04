@@ -10,20 +10,38 @@ import (
 )
 
 type Config struct {
-	DiskWarningPercent   float64
-	DiskCriticalPercent  float64
-	ProcessCountWarning  int
-	ZombieCriticalCount  int
-	ZombiePersistAfter   time.Duration
+	DiskWarningPercent  float64
+	DiskCriticalPercent float64
+	CPUWarningPercent   float64
+	CPUCriticalPercent  float64
+	MemWarningPercent   float64
+	MemCriticalPercent  float64
+	GPUWarningPercent   float64
+	GPUCriticalPercent  float64
+	GPUMemWarnPercent   float64
+	GPUMemCritPercent   float64
+	ProcessCountWarning int
+	ZombieCriticalCount int
+	ZombiePersistAfter  time.Duration
+	GaugePersistFor     time.Duration
 }
 
 func DefaultConfig() Config {
 	return Config{
 		DiskWarningPercent:  80,
 		DiskCriticalPercent: 90,
+		CPUWarningPercent:   80,
+		CPUCriticalPercent:  95,
+		MemWarningPercent:   85,
+		MemCriticalPercent:  95,
+		GPUWarningPercent:   90,
+		GPUCriticalPercent:  98,
+		GPUMemWarnPercent:   90,
+		GPUMemCritPercent:   95,
 		ProcessCountWarning: 2000,
 		ZombieCriticalCount: 10,
 		ZombiePersistAfter:  5 * time.Minute,
+		GaugePersistFor:     3 * time.Minute,
 	}
 }
 
@@ -65,7 +83,70 @@ func (e *Evaluator) EvaluateSnapshot(host *models.Host, snap *models.MetricSnaps
 	if err := e.evaluateProcesses(host, snap); err != nil {
 		return err
 	}
+	if err := e.evaluateGauges(host, snap); err != nil {
+		return err
+	}
 	return nil
+}
+
+func (e *Evaluator) evaluateGauges(host *models.Host, snap *models.MetricSnapshot) error {
+	if err := e.gauge(host, "cpu.high", "cpu.usage_percent", snap.CPU.UsagePercent,
+		e.config.CPUWarningPercent, e.config.CPUCriticalPercent, "CPU"); err != nil {
+		return err
+	}
+	if err := e.gauge(host, "memory.high", "memory.used_percent", snap.Memory.UsedPercent,
+		e.config.MemWarningPercent, e.config.MemCriticalPercent, "memory"); err != nil {
+		return err
+	}
+	if snap.GPUs == nil || !snap.GPUs.Available {
+		_ = e.store.ResolveAlerts(host.ID, "gpu.high")
+		_ = e.store.ResolveAlerts(host.ID, "gpu.memory.high")
+		return nil
+	}
+	var maxUtil, maxMem float64
+	for _, g := range snap.GPUs.Devices {
+		if g.UtilPercent > maxUtil {
+			maxUtil = g.UtilPercent
+		}
+		if g.MemoryUsedPercent > maxMem {
+			maxMem = g.MemoryUsedPercent
+		}
+	}
+	if err := e.gauge(host, "gpu.high", "gpu.max_util_percent", maxUtil,
+		e.config.GPUWarningPercent, e.config.GPUCriticalPercent, "GPU util"); err != nil {
+		return err
+	}
+	if err := e.gauge(host, "gpu.memory.high", "gpu.max_mem_percent", maxMem,
+		e.config.GPUMemWarnPercent, e.config.GPUMemCritPercent, "GPU memory"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (e *Evaluator) gauge(host *models.Host, rule, metric string, current, warn, crit float64, label string) error {
+	payload := fmt.Sprintf(`{"metric":%q,"value":%.2f}`, metric, current)
+	if current >= crit {
+		ok, err := e.store.SustainedAbove(host.ID, metric, crit, e.config.GaugePersistFor)
+		if err != nil {
+			return err
+		}
+		if ok {
+			return e.fire(host, rule, models.AlertSeverityCritical,
+				fmt.Sprintf("%s critical: %.1f%% on %s", label, current, host.Name), payload)
+		}
+	}
+	if current >= warn {
+		ok, err := e.store.SustainedAbove(host.ID, metric, warn, e.config.GaugePersistFor)
+		if err != nil {
+			return err
+		}
+		if ok {
+			return e.fire(host, rule, models.AlertSeverityWarning,
+				fmt.Sprintf("%s warning: %.1f%% on %s", label, current, host.Name), payload)
+		}
+		return nil
+	}
+	return e.store.ResolveAlerts(host.ID, rule)
 }
 
 func (e *Evaluator) evaluateProcesses(host *models.Host, snap *models.MetricSnapshot) error {

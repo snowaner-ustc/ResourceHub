@@ -13,6 +13,7 @@ type Host struct {
 	ID           string     `json:"id"`
 	Name         string     `json:"name"`
 	Hostname     string     `json:"hostname"`
+	Group        string     `json:"group,omitempty"`
 	AgentVersion string     `json:"agent_version"`
 	Token        string     `json:"-"`
 	Status       HostStatus `json:"status"`
@@ -81,12 +82,33 @@ type ProcessStats struct {
 	Zombies     []ProcessInfo  `json:"zombies"`
 }
 
+type GPUDevice struct {
+	Index             int     `json:"index"`
+	Name              string  `json:"name"`
+	UUID              string  `json:"uuid,omitempty"`
+	UtilPercent       float64 `json:"util_percent"`
+	MemoryUsedBytes   uint64  `json:"memory_used_bytes"`
+	MemoryTotalBytes  uint64  `json:"memory_total_bytes"`
+	MemoryUsedPercent float64 `json:"memory_used_percent"`
+	TemperatureC      float64 `json:"temperature_c"`
+	PowerWatts        float64 `json:"power_watts"`
+}
+
+type GPUStats struct {
+	Available         bool        `json:"available"`
+	Status            string      `json:"status"`
+	Method            string      `json:"method,omitempty"`
+	CollectDurationMs int64       `json:"collect_duration_ms"`
+	Devices           []GPUDevice `json:"devices"`
+}
+
 type MetricSnapshot struct {
 	HostID                string        `json:"host_id"`
 	CollectedAt           time.Time     `json:"collected_at"`
 	CPU                   CPUStats      `json:"cpu"`
 	Memory                MemoryStats   `json:"memory"`
 	Disks                 []DiskStats   `json:"disks"`
+	GPUs                  *GPUStats     `json:"gpus,omitempty"`
 	Processes             *ProcessStats `json:"processes,omitempty"`
 	CollectDurationMs     int64         `json:"collect_duration_ms"`
 	DiskCollectDurationMs int64         `json:"disk_collect_duration_ms"`
@@ -100,6 +122,15 @@ type HostSummary struct {
 	MaxDiskMountpoint  string  `json:"max_disk_mountpoint,omitempty"`
 	ProcessTotal       int     `json:"process_total"`
 	ZombieCount        int     `json:"zombie_count"`
+	GPUCount           int     `json:"gpu_count"`
+	MaxGPUUtilPercent  float64 `json:"max_gpu_util_percent"`
+	MaxGPUMemPercent   float64 `json:"max_gpu_mem_percent"`
+}
+
+type MetricPoint struct {
+	Metric string    `json:"metric"`
+	TS     time.Time `json:"ts"`
+	Value  float64   `json:"value"`
 }
 
 type AlertSeverity string
@@ -133,6 +164,11 @@ type RegisterRequest struct {
 	Name         string `json:"name"`
 	Hostname     string `json:"hostname"`
 	AgentVersion string `json:"agent_version"`
+	Group        string `json:"group"`
+}
+
+type HostPatchRequest struct {
+	Group string `json:"group"`
 }
 
 type RegisterResponse struct {
@@ -145,6 +181,7 @@ type MetricsRequest struct {
 	CPU                   CPUStats      `json:"cpu"`
 	Memory                MemoryStats   `json:"memory"`
 	Disks                 []DiskStats   `json:"disks"`
+	GPUs                  *GPUStats     `json:"gpus,omitempty"`
 	Processes             *ProcessStats `json:"processes,omitempty"`
 	CollectDurationMs     int64         `json:"collect_duration_ms"`
 	DiskCollectDurationMs int64         `json:"disk_collect_duration_ms"`
