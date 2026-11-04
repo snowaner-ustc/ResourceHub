@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type HostStatus string
 
@@ -143,7 +146,7 @@ const (
 type AlertStatus string
 
 const (
-	AlertStatusFiring  AlertStatus = "firing"
+	AlertStatusFiring   AlertStatus = "firing"
 	AlertStatusResolved AlertStatus = "resolved"
 )
 
@@ -185,4 +188,110 @@ type MetricsRequest struct {
 	Processes             *ProcessStats `json:"processes,omitempty"`
 	CollectDurationMs     int64         `json:"collect_duration_ms"`
 	DiskCollectDurationMs int64         `json:"disk_collect_duration_ms"`
+}
+
+const (
+	JobKindDiskScan  = "disk_scan"
+	JobKindQuotaScan = "quota_scan"
+	JobStatusQueued  = "queued"
+	JobStatusRunning = "running"
+	JobStatusDone    = "done"
+	JobStatusFailed  = "failed"
+	DiskScanCacheTTL = 6 * time.Hour
+)
+
+type Job struct {
+	ID         string          `json:"id"`
+	HostID     string          `json:"host_id"`
+	Kind       string          `json:"kind"`
+	Status     string          `json:"status"`
+	CacheKey   string          `json:"-"`
+	Params     json.RawMessage `json:"params"`
+	Report     json.RawMessage `json:"report,omitempty"`
+	Error      string          `json:"error,omitempty"`
+	Cached     bool            `json:"cached,omitempty"`
+	CreatedAt  time.Time       `json:"created_at"`
+	StartedAt  *time.Time      `json:"started_at,omitempty"`
+	FinishedAt *time.Time      `json:"finished_at,omitempty"`
+}
+
+type DiskScanRequest struct {
+	Root  string `json:"root"`
+	TopN  int    `json:"top_n"`
+	Force bool   `json:"force"`
+}
+
+type DiskScanParams struct {
+	Root      string   `json:"root"`
+	TopN      int      `json:"top_n"`
+	TimeoutMs int      `json:"timeout_ms"`
+	MaxFiles  int      `json:"max_files"`
+	LargeN    int      `json:"large_n"`
+	Skip      []string `json:"skip,omitempty"`
+}
+
+type QuotaScanParams struct {
+	PolicyID    string   `json:"policy_id"`
+	PathPattern string   `json:"path_pattern"`
+	Exclude     []string `json:"exclude,omitempty"`
+	TimeoutMs   int      `json:"timeout_ms"`
+	MaxFiles    int      `json:"max_files"`
+	MaxTargets  int      `json:"max_targets"`
+}
+
+type QuotaTarget struct {
+	Path      string `json:"path"`
+	UsedBytes uint64 `json:"used_bytes"`
+	Owner     string `json:"owner,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
+type QuotaScanReport struct {
+	PolicyID      string        `json:"policy_id"`
+	PathPattern   string        `json:"path_pattern"`
+	AsOf          time.Time     `json:"as_of"`
+	DurationMs    int64         `json:"duration_ms"`
+	Partial       bool          `json:"partial"`
+	PartialReason string        `json:"partial_reason,omitempty"`
+	Targets       []QuotaTarget `json:"targets"`
+}
+
+type JobResultRequest struct {
+	Status string          `json:"status"`
+	Error  string          `json:"error,omitempty"`
+	Report json.RawMessage `json:"report,omitempty"`
+}
+
+type QuotaPolicy struct {
+	ID                  string    `json:"id"`
+	Name                string    `json:"name"`
+	Enabled             bool      `json:"enabled"`
+	HostGroup           string    `json:"host_group,omitempty"`
+	PathPattern         string    `json:"path_pattern"`
+	MatchMode           string    `json:"match_mode"`
+	LimitBytes          uint64    `json:"limit_bytes"`
+	WarnPercent         float64   `json:"warn_percent"`
+	CriticalPercent     float64   `json:"critical_percent"`
+	ScanIntervalSeconds int       `json:"scan_interval_seconds"`
+	Exclude             []string  `json:"exclude,omitempty"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
+}
+
+type QuotaScanRequest struct {
+	HostID string `json:"host_id,omitempty"`
+	Force  bool   `json:"force"`
+}
+
+type QuotaUsage struct {
+	HostID      string    `json:"host_id"`
+	HostName    string    `json:"host_name,omitempty"`
+	PolicyID    string    `json:"policy_id"`
+	PolicyName  string    `json:"policy_name,omitempty"`
+	Path        string    `json:"path"`
+	Owner       string    `json:"owner,omitempty"`
+	UsedBytes   uint64    `json:"used_bytes"`
+	LimitBytes  uint64    `json:"limit_bytes"`
+	UsedPercent float64   `json:"used_percent"`
+	AsOf        time.Time `json:"as_of"`
 }

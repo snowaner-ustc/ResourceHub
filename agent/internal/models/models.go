@@ -87,11 +87,11 @@ type ProcessInfo struct {
 }
 
 type ProcessStats struct {
-	CollectedAt time.Time     `json:"collected_at"`
+	CollectedAt time.Time      `json:"collected_at"`
 	Summary     ProcessSummary `json:"summary"`
-	TopCPU      []ProcessInfo `json:"top_cpu"`
-	TopRSS      []ProcessInfo `json:"top_rss"`
-	Zombies     []ProcessInfo `json:"zombies"`
+	TopCPU      []ProcessInfo  `json:"top_cpu"`
+	TopRSS      []ProcessInfo  `json:"top_rss"`
+	Zombies     []ProcessInfo  `json:"zombies"`
 }
 
 type RegisterResponse struct {

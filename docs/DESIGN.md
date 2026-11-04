@@ -263,7 +263,8 @@ AlertEvent
 | `POST /api/v1/agent/register` | 首次注册，下发 `host_id` / token |
 | `POST /api/v1/agent/heartbeat` | 轻量存活（可与 metrics 合并） |
 | `POST /api/v1/agent/metrics` | 上报快路径快照（幂等：按 `collected_at`） |
-| `POST /api/v1/agent/slow-jobs/:id/result` | 慢路径结果（二期） |
+| `GET /api/v1/agent/jobs` | Agent 领取一条 queued 慢任务（无则 204） |
+| `POST /api/v1/agent/jobs/:id/result` | 回传磁盘分析 / 配额扫描结果 |
 
 建议：TLS + 每 Agent 独立 token；支持 gzip。
 
@@ -275,6 +276,11 @@ AlertEvent
 | `GET /api/v1/hosts/:id` | 详情最新快照 |
 | `GET /api/v1/hosts/:id/metrics?from&to&names=` | 时序（只读存储） |
 | `GET /api/v1/alerts` | 告警列表 |
+| `POST /api/v1/hosts/:id/disk-scans` | 提交异步目录 Top-N（禁止 `/`） |
+| `GET /api/v1/hosts/:id/disk-scans/:job_id` | 查询分析任务；同 root 6h 内复用缓存 |
+| `GET/POST /api/v1/quota-policies` | 软配额策略 |
+| `POST /api/v1/quota-policies/:id/scan` | 手动触发定向扫描 |
+| `GET /api/v1/quota-usages` | 最新用量（只读缓存） |
 | `WS /api/v1/ws/overview` | 可选：推送状态变更 |
 
 **明确禁止：** 任何「同步触发远端全盘扫描并等待结果」的同步 HTTP API。
@@ -403,8 +409,8 @@ AlertEvent
 
 ### Phase 3 — 深度存储分析与软配额告警（谨慎开启）
 
-- **3a** 异步目录 Top-N 下钻 + 报告缓存 + 大文件 Top-N（定位「谁占用」）  
-- **3b** QuotaPolicy（如 `/home/*/*` 每文件夹限额）+ 定向扫描 + **超限告警/提醒**（软限制，不拦写）  
+- [x] **3a** 异步目录 Top-N 下钻 + 报告缓存 + 大文件 Top-N（定位「谁占用」）  
+- [x] **3b** QuotaPolicy（如 `/home/*/*` 每文件夹限额）+ 定向扫描 + **超限告警/提醒**（软限制，不拦写）  
 
 细节见 [guides/STORAGE_ATTRIBUTION_AND_QUOTA.md](./guides/STORAGE_ATTRIBUTION_AND_QUOTA.md)。
 

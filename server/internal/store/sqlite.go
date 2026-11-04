@@ -10,14 +10,15 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/snowaner-ustc/ResourceHub/server/internal/models"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/snowaner-ustc/ResourceHub/server/internal/models"
 )
 
 type Store struct {
 	db        *sql.DB
 	pruneMu   sync.Mutex
 	lastPrune time.Time
+	jobMu     sync.Mutex
 }
 
 const (
@@ -80,6 +81,47 @@ CREATE TABLE IF NOT EXISTS metric_samples (
 CREATE INDEX IF NOT EXISTS idx_alerts_status ON alerts(status);
 CREATE INDEX IF NOT EXISTS idx_alerts_host ON alerts(host_id);
 CREATE INDEX IF NOT EXISTS idx_samples_host_metric_ts ON metric_samples(host_id, metric_name, ts);
+CREATE TABLE IF NOT EXISTS jobs (
+	id TEXT PRIMARY KEY,
+	host_id TEXT NOT NULL REFERENCES hosts(id) ON DELETE CASCADE,
+	kind TEXT NOT NULL,
+	status TEXT NOT NULL,
+	cache_key TEXT NOT NULL DEFAULT '',
+	params TEXT NOT NULL,
+	report TEXT,
+	error TEXT,
+	created_at TEXT NOT NULL,
+	started_at TEXT,
+	finished_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_jobs_host_status ON jobs(host_id, status);
+CREATE INDEX IF NOT EXISTS idx_jobs_cache ON jobs(host_id, cache_key, status, finished_at);
+CREATE TABLE IF NOT EXISTS quota_policies (
+	id TEXT PRIMARY KEY,
+	name TEXT NOT NULL,
+	enabled INTEGER NOT NULL DEFAULT 1,
+	host_group TEXT NOT NULL DEFAULT '',
+	path_pattern TEXT NOT NULL,
+	match_mode TEXT NOT NULL DEFAULT 'glob',
+	limit_bytes INTEGER NOT NULL,
+	warn_percent REAL NOT NULL DEFAULT 80,
+	critical_percent REAL NOT NULL DEFAULT 100,
+	scan_interval_seconds INTEGER NOT NULL DEFAULT 86400,
+	exclude_json TEXT NOT NULL DEFAULT '[]',
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS quota_usages (
+	host_id TEXT NOT NULL REFERENCES hosts(id) ON DELETE CASCADE,
+	policy_id TEXT NOT NULL REFERENCES quota_policies(id) ON DELETE CASCADE,
+	path TEXT NOT NULL,
+	owner TEXT NOT NULL DEFAULT '',
+	used_bytes INTEGER NOT NULL,
+	limit_bytes INTEGER NOT NULL,
+	used_percent REAL NOT NULL,
+	as_of TEXT NOT NULL,
+	PRIMARY KEY (host_id, policy_id, path)
+);
 `
 	if _, err := s.db.Exec(schema); err != nil {
 		return err
@@ -473,7 +515,7 @@ func (s *Store) UpsertAlert(a models.Alert) error {
 	_, err := s.db.Exec(
 		`INSERT INTO alerts (id, host_id, rule_type, severity, status, message, payload, fired_at, resolved_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		 ON CONFLICT(id) DO UPDATE SET status = excluded.status, message = excluded.message, payload = excluded.payload, resolved_at = excluded.resolved_at`,
+		 ON CONFLICT(id) DO UPDATE SET status = excluded.status, severity = excluded.severity, message = excluded.message, payload = excluded.payload, resolved_at = excluded.resolved_at`,
 		a.ID, a.HostID, a.RuleType, a.Severity, a.Status, a.Message, a.Payload,
 		a.FiredAt.UTC().Format(time.RFC3339Nano), nullableTime(a.ResolvedAt),
 	)

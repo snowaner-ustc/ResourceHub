@@ -172,10 +172,154 @@ export async function fetchAlerts(status = 'firing'): Promise<Alert[]> {
   return res.json()
 }
 
+export type DiskEntry = {
+  path: string
+  bytes: number
+  owner?: string
+  entry_type: string
+}
+
+export type DiskScanReport = {
+  root: string
+  as_of: string
+  duration_ms: number
+  partial: boolean
+  partial_reason?: string
+  files_visited: number
+  scan_errors: number
+  root_bytes: number
+  entries: DiskEntry[]
+  others_bytes: number
+  by_owner: { owner: string; bytes: number }[]
+  large_files: DiskEntry[]
+}
+
+export type SlowJob = {
+  id: string
+  host_id: string
+  kind: string
+  status: 'queued' | 'running' | 'done' | 'failed'
+  params?: { root?: string; path_pattern?: string }
+  report?: DiskScanReport
+  error?: string
+  cached?: boolean
+  created_at: string
+  finished_at?: string
+}
+
+export type QuotaPolicy = {
+  id: string
+  name: string
+  enabled: boolean
+  host_group?: string
+  path_pattern: string
+  match_mode: string
+  limit_bytes: number
+  warn_percent: number
+  critical_percent: number
+  scan_interval_seconds: number
+  exclude?: string[]
+}
+
+export type QuotaUsage = {
+  host_id: string
+  host_name: string
+  policy_id: string
+  policy_name: string
+  path: string
+  owner?: string
+  used_bytes: number
+  limit_bytes: number
+  used_percent: number
+  as_of: string
+}
+
+async function readError(res: Response, fallback: string): Promise<string> {
+  try {
+    const body = await res.json() as { error?: string }
+    if (body.error) return body.error
+  } catch {
+    /* ignore */
+  }
+  return fallback
+}
+
+export async function startDiskScan(hostId: string, root: string, force = false): Promise<SlowJob> {
+  const res = await fetch(`${API}/hosts/${hostId}/disk-scans`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ root, force }),
+  })
+  if (!res.ok) throw new Error(await readError(res, 'failed to start disk scan'))
+  return res.json()
+}
+
+export async function fetchDiskScan(hostId: string, jobId: string): Promise<SlowJob> {
+  const res = await fetch(`${API}/hosts/${hostId}/disk-scans/${jobId}`)
+  if (!res.ok) throw new Error(await readError(res, 'failed to load disk scan'))
+  return res.json()
+}
+
+export async function fetchQuotaPolicies(): Promise<QuotaPolicy[]> {
+  const res = await fetch(`${API}/quota-policies`)
+  if (!res.ok) throw new Error('failed to load quota policies')
+  return res.json()
+}
+
+export async function createQuotaPolicy(p: Partial<QuotaPolicy>): Promise<QuotaPolicy> {
+  const res = await fetch(`${API}/quota-policies`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(p),
+  })
+  if (!res.ok) throw new Error(await readError(res, 'failed to create policy'))
+  return res.json()
+}
+
+export async function patchQuotaPolicy(id: string, p: Partial<QuotaPolicy>): Promise<QuotaPolicy> {
+  const res = await fetch(`${API}/quota-policies/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(p),
+  })
+  if (!res.ok) throw new Error(await readError(res, 'failed to update policy'))
+  return res.json()
+}
+
+export async function deleteQuotaPolicy(id: string): Promise<void> {
+  const res = await fetch(`${API}/quota-policies/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(await readError(res, 'failed to delete policy'))
+}
+
+export async function triggerQuotaScan(id: string, hostId?: string): Promise<void> {
+  const res = await fetch(`${API}/quota-policies/${id}/scan`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ host_id: hostId || '', force: true }),
+  })
+  if (!res.ok) throw new Error(await readError(res, 'failed to start quota scan'))
+}
+
+export async function fetchQuotaUsages(hostId = '', policyId = ''): Promise<QuotaUsage[]> {
+  const params = new URLSearchParams()
+  if (hostId) params.set('host_id', hostId)
+  if (policyId) params.set('policy_id', policyId)
+  const q = params.toString()
+  const res = await fetch(`${API}/quota-usages${q ? `?${q}` : ''}`)
+  if (!res.ok) throw new Error('failed to load quota usages')
+  return res.json()
+}
+
+const KiB = 1024
+const MiB = 1024 ** 2
+const GiB = 1024 ** 3
+const TiB = 1024 ** 4
+
 export function formatBytes(n: number): string {
-  if (n >= 1 << 40) return (n / (1 << 40)).toFixed(1) + ' TiB'
-  if (n >= 1 << 30) return (n / (1 << 30)).toFixed(1) + ' GiB'
-  if (n >= 1 << 20) return (n / (1 << 20)).toFixed(1) + ' MiB'
+  if (n >= TiB) return (n / TiB).toFixed(1) + ' TiB'
+  if (n >= GiB) return (n / GiB).toFixed(1) + ' GiB'
+  if (n >= MiB) return (n / MiB).toFixed(1) + ' MiB'
+  if (n >= KiB) return (n / KiB).toFixed(1) + ' KiB'
   return n + ' B'
 }
 

@@ -14,13 +14,15 @@ import (
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
+	slowClient *http.Client
 	token      string
 }
 
 func New(baseURL string) *Client {
 	return &Client{
-		baseURL: baseURL,
+		baseURL:    baseURL,
 		httpClient: &http.Client{Timeout: 10 * time.Second},
+		slowClient: &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -81,6 +83,61 @@ func (c *Client) Report(snap models.Snapshot) error {
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("report failed: %s", resp.Status)
+	}
+	return nil
+}
+
+func (c *Client) ClaimJob() (*models.Job, error) {
+	if c.token == "" {
+		return nil, fmt.Errorf("agent not registered")
+	}
+	req, err := http.NewRequest(http.MethodGet, c.baseURL+"/api/v1/agent/jobs", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNoContent {
+		return nil, nil
+	}
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("claim job failed: %s", resp.Status)
+	}
+	var job models.Job
+	if err := json.NewDecoder(resp.Body).Decode(&job); err != nil {
+		return nil, err
+	}
+	if job.ID == "" {
+		return nil, nil
+	}
+	return &job, nil
+}
+
+func (c *Client) SubmitJobResult(id string, result models.JobResult) error {
+	if c.token == "" {
+		return fmt.Errorf("agent not registered")
+	}
+	body, err := json.Marshal(result)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodPost, c.baseURL+"/api/v1/agent/jobs/"+id+"/result", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	resp, err := c.slowClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("submit job failed: %s", resp.Status)
 	}
 	return nil
 }

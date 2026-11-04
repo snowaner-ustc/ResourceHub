@@ -226,8 +226,8 @@ quota_policies:
 
 | 阶段 | 交付 |
 |------|------|
-| Phase 3a | 异步目录 Top-N 下钻 + 报告缓存 + 大文件 Top-N |
-| Phase 3b | QuotaPolicy + 定向扫描 + 超限告警/提醒 + 配额看板 |
+| Phase 3a | 异步目录 Top-N 下钻 + 报告缓存 + 大文件 Top-N（已实现：详情页「目录分析」） |
+| Phase 3b | QuotaPolicy + 定向扫描 + 超限告警/提醒 + 配额看板（已实现：`/quota`） |
 | 更后 | 通知到具体目录 owner、年龄分桶等增强（仍保持软限制） |
 
 ---

@@ -2,6 +2,7 @@ import { Link, Route, Routes } from 'react-router-dom'
 import HostsPage from './pages/HostsPage'
 import HostDetailPage from './pages/HostDetailPage'
 import AlertsPage from './pages/AlertsPage'
+import QuotaPage from './pages/QuotaPage'
 
 export default function App() {
   return (
@@ -11,6 +12,7 @@ export default function App() {
         <nav>
           <Link to="/">总览</Link>
           <Link to="/alerts">告警</Link>
+          <Link to="/quota">软配额</Link>
         </nav>
       </header>
       <main className="main">
@@ -18,6 +20,7 @@ export default function App() {
           <Route path="/" element={<HostsPage />} />
           <Route path="/hosts/:id" element={<HostDetailPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
+          <Route path="/quota" element={<QuotaPage />} />
         </Routes>
       </main>
     </div>
