@@ -109,6 +109,91 @@ func TestQuotaPolicyAndUsages(t *testing.T) {
 	if err != nil || len(list) != 1 || list[0].Path != "/home/a/x" {
 		t.Fatalf("usages: %+v %v", list, err)
 	}
+	if err := st.UpsertQuotaUsages(host.HostID, p.ID, []models.QuotaUsage{{
+		Path: "/home/a/y", Owner: "a", UsedBytes: 10, LimitBytes: 100, UsedPercent: 10, AsOf: time.Now().UTC(),
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	list, err = st.ListQuotaUsages(host.HostID, p.ID)
+	if err != nil || len(list) != 2 {
+		t.Fatalf("upsert should keep existing path, got %+v %v", list, err)
+	}
+}
+
+func TestDiskScanCacheSkipsPartial(t *testing.T) {
+	dir := t.TempDir()
+	st, err := Open(filepath.Join(dir, "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	resp, err := st.RegisterHost(models.RegisterRequest{Name: "n1", Hostname: "h1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, err := st.EnqueueDiskScan(resp.HostID, "/var", 10, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := st.ClaimJob(resp.HostID)
+	if err != nil || claimed == nil {
+		t.Fatalf("claim: %v", err)
+	}
+	rep, _ := json.Marshal(map[string]any{"root": "/var", "partial": true, "entries": []any{}})
+	if err := st.FinishJob(claimed.ID, resp.HostID, models.JobStatusDone, "", rep); err != nil {
+		t.Fatal(err)
+	}
+	next, err := st.EnqueueDiskScan(resp.HostID, "/var", 10, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.Cached || next.ID == job.ID {
+		t.Fatalf("partial report must not be cached, got %+v", next)
+	}
+}
+
+func TestFinishJobIdempotentAndRequeue(t *testing.T) {
+	dir := t.TempDir()
+	st, err := Open(filepath.Join(dir, "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	resp, err := st.RegisterHost(models.RegisterRequest{Name: "n1", Hostname: "h1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, err := st.EnqueueDiskScan(resp.HostID, "/var/tmp", 5, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.ClaimJob(resp.HostID); err != nil {
+		t.Fatal(err)
+	}
+	rep, _ := json.Marshal(map[string]any{"root": "/var/tmp", "partial": false})
+	if err := st.FinishJob(job.ID, resp.HostID, models.JobStatusDone, "", rep); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.FinishJob(job.ID, resp.HostID, models.JobStatusDone, "", rep); err != nil {
+		t.Fatalf("idempotent finish: %v", err)
+	}
+	job2, err := st.EnqueueDiskScan(resp.HostID, "/var/cache", 5, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.ClaimJob(resp.HostID); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.RequeueJob(job2.ID, resp.HostID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.GetJob(job2.ID)
+	if err != nil || got.Status != models.JobStatusQueued {
+		t.Fatalf("requeue: %+v %v", got, err)
+	}
+	if err := st.RequeueJob(job.ID, resp.HostID); err != nil {
+		t.Fatalf("requeue of finished job should no-op: %v", err)
+	}
 }
 
 func TestFailStaleJobs(t *testing.T) {

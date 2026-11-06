@@ -134,8 +134,13 @@ func runSlowWorker(client *reporter.Client, poll time.Duration, stop <-chan stru
 			}
 			log.Printf("slow job start id=%s kind=%s", job.ID, job.Kind)
 			res := collector.RunSlowJob(*job)
-			if err := client.SubmitJobResult(job.ID, res); err != nil {
+			if err := client.SubmitJobResultRetry(job.ID, res, stop); err != nil {
 				log.Printf("slow job submit id=%s: %v", job.ID, err)
+				if qerr := client.RequeueJob(job.ID); qerr != nil {
+					log.Printf("slow job requeue id=%s: %v", job.ID, qerr)
+				} else {
+					log.Printf("slow job requeued id=%s", job.ID)
+				}
 				continue
 			}
 			log.Printf("slow job finish id=%s status=%s err=%s", job.ID, res.Status, res.Error)

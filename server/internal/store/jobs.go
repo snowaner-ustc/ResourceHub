@@ -124,18 +124,38 @@ func (s *Store) findActiveJob(hostID, cacheKey string) (*models.Job, error) {
 
 func (s *Store) findCachedJob(hostID, cacheKey string, ttl time.Duration) (*models.Job, error) {
 	cutoff := time.Now().UTC().Add(-ttl).Format(time.RFC3339Nano)
-	row := s.db.QueryRow(
-		`SELECT `+jobColumns+` FROM jobs WHERE host_id = ? AND cache_key = ? AND status = ? AND finished_at IS NOT NULL AND finished_at >= ? ORDER BY finished_at DESC LIMIT 1`,
+	rows, err := s.db.Query(
+		`SELECT `+jobColumns+` FROM jobs WHERE host_id = ? AND cache_key = ? AND status = ? AND finished_at IS NOT NULL AND finished_at >= ? ORDER BY finished_at DESC LIMIT 20`,
 		hostID, cacheKey, models.JobStatusDone, cutoff,
 	)
-	job, err := scanJob(row)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
 		return nil, err
 	}
-	return job, nil
+	defer rows.Close()
+	for rows.Next() {
+		job, err := scanJobRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		if reportIsPartial(job.Report) {
+			continue
+		}
+		return job, nil
+	}
+	return nil, rows.Err()
+}
+
+func reportIsPartial(report json.RawMessage) bool {
+	if len(report) == 0 {
+		return true
+	}
+	var meta struct {
+		Partial bool `json:"partial"`
+	}
+	if err := json.Unmarshal(report, &meta); err != nil {
+		return true
+	}
+	return meta.Partial
 }
 
 func (s *Store) ClaimJob(hostID string) (*models.Job, error) {
@@ -186,6 +206,32 @@ func (s *Store) FinishJob(id, hostID, status, errMsg string, report []byte) erro
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
+		existing, getErr := s.GetJob(id)
+		if getErr != nil {
+			return fmt.Errorf("job not running")
+		}
+		if existing.HostID == hostID && (existing.Status == status || existing.Status == models.JobStatusDone || existing.Status == models.JobStatusFailed) {
+			return nil
+		}
+		return fmt.Errorf("job not running")
+	}
+	return nil
+}
+
+func (s *Store) RequeueJob(id, hostID string) error {
+	res, err := s.db.Exec(
+		`UPDATE jobs SET status = ?, started_at = NULL, error = ? WHERE id = ? AND host_id = ? AND status = ?`,
+		models.JobStatusQueued, "requeued after submit failure", id, hostID, models.JobStatusRunning,
+	)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		existing, getErr := s.GetJob(id)
+		if getErr == nil && existing.HostID == hostID && existing.Status != models.JobStatusRunning {
+			return nil
+		}
 		return fmt.Errorf("job not running")
 	}
 	return nil

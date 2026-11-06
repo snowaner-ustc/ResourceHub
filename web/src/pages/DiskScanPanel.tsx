@@ -14,6 +14,13 @@ export default function DiskScanPanel({
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
+    setJob(null)
+    setError('')
+    setBusy(false)
+    setRoot(defaultRoot(mountpoints))
+  }, [hostId])
+
+  useEffect(() => {
     if (!job || job.status === 'done' || job.status === 'failed') return
     let alive = true
     const t = setInterval(async () => {

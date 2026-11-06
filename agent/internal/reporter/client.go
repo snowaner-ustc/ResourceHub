@@ -142,6 +142,49 @@ func (c *Client) SubmitJobResult(id string, result models.JobResult) error {
 	return nil
 }
 
+func (c *Client) SubmitJobResultRetry(id string, result models.JobResult, stop <-chan struct{}) error {
+	var last error
+	delay := time.Second
+	for i := 0; i < 5; i++ {
+		last = c.SubmitJobResult(id, result)
+		if last == nil {
+			return nil
+		}
+		if i == 4 {
+			break
+		}
+		timer := time.NewTimer(delay)
+		select {
+		case <-stop:
+			timer.Stop()
+			return last
+		case <-timer.C:
+		}
+		delay *= 2
+	}
+	return last
+}
+
+func (c *Client) RequeueJob(id string) error {
+	if c.token == "" {
+		return fmt.Errorf("agent not registered")
+	}
+	req, err := http.NewRequest(http.MethodPost, c.baseURL+"/api/v1/agent/jobs/"+id+"/requeue", nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("requeue job failed: %s", resp.Status)
+	}
+	return nil
+}
+
 func LoadToken(path string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

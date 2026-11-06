@@ -131,6 +131,33 @@ func (s *Store) ListQuotaPolicies() ([]models.QuotaPolicy, error) {
 	return out, rows.Err()
 }
 
+func (s *Store) UpsertQuotaUsages(hostID, policyID string, rows []models.QuotaUsage) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare(`INSERT INTO quota_usages (host_id, policy_id, path, owner, used_bytes, limit_bytes, used_percent, as_of)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(host_id, policy_id, path) DO UPDATE SET
+			owner = excluded.owner,
+			used_bytes = excluded.used_bytes,
+			limit_bytes = excluded.limit_bytes,
+			used_percent = excluded.used_percent,
+			as_of = excluded.as_of`)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	defer stmt.Close()
+	for _, u := range rows {
+		if _, err := stmt.Exec(hostID, policyID, u.Path, u.Owner, int64(u.UsedBytes), int64(u.LimitBytes), u.UsedPercent, u.AsOf.UTC().Format(time.RFC3339Nano)); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func (s *Store) ReplaceQuotaUsages(hostID, policyID string, rows []models.QuotaUsage) error {
 	tx, err := s.db.Begin()
 	if err != nil {

@@ -70,6 +70,10 @@ export default function HostDetailPage() {
   useEffect(() => {
     groupDirty.current = false
     setGroupInput('')
+    setData(null)
+    setPoints([])
+    setUsages([])
+    setError('')
   }, [id])
 
   useEffect(() => {
@@ -245,7 +249,7 @@ export default function HostDetailPage() {
             </tbody>
           </table>
 
-          <DiskScanPanel hostId={id} mountpoints={snap.disks.map((d) => d.mountpoint)} />
+          <DiskScanPanel key={id} hostId={id} mountpoints={snap.disks.map((d) => d.mountpoint)} />
 
           <h2>软配额用量</h2>
           <p className="muted"><Link to="/quota">管理策略</Link> · 超限只告警，不拦写入。</p>

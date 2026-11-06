@@ -34,7 +34,7 @@ func (s *Server) handleAgentJobs(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAgentJobSub(w http.ResponseWriter, r *http.Request) {
 	rest := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/agent/jobs/"), "/")
 	parts := strings.Split(rest, "/")
-	if len(parts) != 2 || parts[1] != "result" || r.Method != http.MethodPost {
+	if len(parts) != 2 || r.Method != http.MethodPost {
 		writeError(w, http.StatusNotFound, "not found")
 		return
 	}
@@ -48,13 +48,21 @@ func (s *Server) handleAgentJobSub(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "job not found")
 		return
 	}
+	if parts[1] == "requeue" && r.Method == http.MethodPost {
+		if err := s.store.RequeueJob(job.ID, host.ID); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "requeued"})
+		return
+	}
+	if parts[1] != "result" || r.Method != http.MethodPost {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
 	var req models.JobResultRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
-		return
-	}
-	if err := s.store.FinishJob(job.ID, host.ID, req.Status, req.Error, req.Report); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if req.Status == models.JobStatusDone && job.Kind == models.JobKindQuotaScan {
@@ -62,6 +70,10 @@ func (s *Server) handleAgentJobSub(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+	}
+	if err := s.store.FinishJob(job.ID, host.ID, req.Status, req.Error, req.Report); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "accepted"})
 }
@@ -105,10 +117,15 @@ func (s *Server) ingestQuotaResult(host *models.Host, job *models.Job, report js
 			AsOf:        asOf,
 		})
 	}
-	if err := s.store.ReplaceQuotaUsages(host.ID, policy.ID, usages); err != nil {
+	complete := !rep.Partial
+	if complete {
+		if err := s.store.ReplaceQuotaUsages(host.ID, policy.ID, usages); err != nil {
+			return err
+		}
+	} else if err := s.store.UpsertQuotaUsages(host.ID, policy.ID, usages); err != nil {
 		return err
 	}
-	return s.evaluator.EvaluateQuota(host, policy, usages)
+	return s.evaluator.EvaluateQuota(host, policy, usages, complete)
 }
 
 func (s *Server) handleDiskScans(w http.ResponseWriter, r *http.Request, hostID string) {

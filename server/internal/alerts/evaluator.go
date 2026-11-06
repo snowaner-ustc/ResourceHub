@@ -252,7 +252,7 @@ func (e *Evaluator) ResolveOffline(hostID string) error {
 	return e.store.ResolveAlerts(hostID, "agent:offline")
 }
 
-func (e *Evaluator) EvaluateQuota(host *models.Host, policy *models.QuotaPolicy, usages []models.QuotaUsage) error {
+func (e *Evaluator) EvaluateQuota(host *models.Host, policy *models.QuotaPolicy, usages []models.QuotaUsage, complete bool) error {
 	if policy == nil {
 		return nil
 	}
@@ -286,6 +286,9 @@ func (e *Evaluator) EvaluateQuota(host *models.Host, policy *models.QuotaPolicy,
 		if err := e.store.ResolveAlerts(host.ID, rule); err != nil {
 			return err
 		}
+	}
+	if !complete {
+		return nil
 	}
 	firing, err := e.store.ListFiringAlertsByHost(host.ID)
 	if err != nil {
