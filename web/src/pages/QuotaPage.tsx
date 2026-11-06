@@ -9,6 +9,7 @@ import {
   fetchQuotaUsages,
   formatBytes,
   formatPercent,
+  isOpsCancelled,
   patchQuotaPolicy,
   triggerQuotaScan,
 } from '../api'
@@ -113,7 +114,7 @@ export default function QuotaPage() {
                 <td className="muted">{Math.round(p.scan_interval_seconds / 3600)}h</td>
                 <td><span className={`badge ${p.enabled ? 'online' : 'offline'}`}>{p.enabled ? 'enabled' : 'disabled'}</span></td>
                 <td>
-                  <button type="button" className="linkish" onClick={() => void triggerQuotaScan(p.id).then(reload).catch((e) => setError((e as Error).message))}>立即扫描</button>
+                  <button type="button" className="linkish" onClick={() => void triggerQuotaScan(p.id).then(reload).catch((e) => { if (!isOpsCancelled(e)) setError((e as Error).message) })}>立即扫描</button>
                   {' · '}
                   <button
                     type="button"

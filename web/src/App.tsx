@@ -3,6 +3,7 @@ import HostsPage from './pages/HostsPage'
 import HostDetailPage from './pages/HostDetailPage'
 import AlertsPage from './pages/AlertsPage'
 import QuotaPage from './pages/QuotaPage'
+import OpsPasswordModal from './OpsPasswordModal'
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
           <Route path="/quota" element={<QuotaPage />} />
         </Routes>
       </main>
+      <OpsPasswordModal />
     </div>
   )
 }

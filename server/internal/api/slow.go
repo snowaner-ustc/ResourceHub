@@ -175,6 +175,9 @@ func (s *Server) handleDiskScans(w http.ResponseWriter, r *http.Request, hostID 
 		}
 		writeJSON(w, http.StatusOK, jobs)
 	case http.MethodPost:
+		if !s.requireOps(w, r) {
+			return
+		}
 		var req models.DiskScanRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid json")
@@ -293,6 +296,9 @@ func (s *Server) handleQuotaPolicySub(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleQuotaScan(w http.ResponseWriter, r *http.Request, policyID string) {
+	if !s.requireOps(w, r) {
+		return
+	}
 	policy, err := s.store.GetQuotaPolicy(policyID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err.Error())

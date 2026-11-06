@@ -285,10 +285,10 @@ AlertEvent
 | `GET /api/v1/hosts/:id` | 详情最新快照 |
 | `GET /api/v1/hosts/:id/metrics?from&to&names=` | 时序（只读存储） |
 | `GET /api/v1/alerts` | 告警列表 |
-| `POST /api/v1/hosts/:id/disk-scans` | 提交异步目录 Top-N（禁止 `/`） |
+| `POST /api/v1/hosts/:id/disk-scans` | 提交异步目录 Top-N（禁止 `/`）。若配置了 `RESOURCEHUB_OPS_PASSWORD`，需头 `X-Ops-Password` |
 | `GET /api/v1/hosts/:id/disk-scans/:job_id` | 查询分析任务；同 root 6h 内复用缓存 |
-| `GET/POST /api/v1/quota-policies` | 软配额策略 |
-| `POST /api/v1/quota-policies/:id/scan` | 手动触发定向扫描 |
+| `GET/POST /api/v1/quota-policies` | 软配额策略（读写策略本身不扫盘，保持开放） |
+| `POST /api/v1/quota-policies/:id/scan` | 手动触发定向扫描；同样可要求运维口令 |
 | `GET /api/v1/quota-usages` | 最新用量（只读缓存；`as_of`；最近一次扫描不完整时带 `partial_scan`） |
 | `WS /api/v1/ws/overview` | 可选：推送状态变更 |
 
@@ -386,7 +386,8 @@ AlertEvent
 ## 11. 安全
 
 - Agent 一机一密，可轮换、可吊销  
-- Server API：用户登录（MVP 可用基础账号或 OIDC）  
+- **看板只读开放**（实验室内网、人人可信）：打开网页不登录  
+- **慢路径写操作**（手动目录分析 / 配额立即扫描）可用环境变量 `RESOURCEHUB_OPS_PASSWORD` 加口令；未配置则与现在一样不拦截。定时配额扫描仍由 Server 调度，不入口令。  
 - 传输 TLS；内网可 mTLS（二期）  
 - 最小权限：Agent 以非 root 运行（GPU/部分磁盘场景再按需提权说明）  
 - 审计：注册、吊销、告警确认留痕  
@@ -425,7 +426,9 @@ AlertEvent
 
 ### Phase 4 — 硬化
 
-- 高可用、权限细化、通知渠道（飞书/Slack/邮件）、SLO 大盘  
+- [ ] **4a** 慢路径口令（目录/配额扫描）；看板不强制登录  
+- [ ] 通知渠道（飞书/Slack/邮件）  
+- 高可用、SLO 大盘（更后）  
 
 ---
 
@@ -459,7 +462,7 @@ AlertEvent
 1. 首批目标 OS：仅 Linux，还是需要 Windows？  
 2. GPU：是否只需 NVIDIA？是否有多卡训练机优先级？  
 3. ~~部署形态：内网 Docker Compose，还是已有 K8s？~~ → **非 K8s**（已确认，Compose / 普通主机）
-4. 认证：简单账号密码是否可接受 MVP？  
+4. ~~认证：简单账号密码是否可接受 MVP？~~ → **看板不登录**；手动目录/配额扫描用 `RESOURCEHUB_OPS_PASSWORD`（未配置则不拦截）
 5. 是否需要「目录级占用来源」在第一版就出现（建议放到 Phase 3）？  
 6. 历史数据保留多久（7 / 30 / 90 天）？  
 7. 用户目录根路径与「每文件夹」粒度（一级子目录 vs 任意深度）？  
