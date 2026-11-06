@@ -31,6 +31,7 @@ func main() {
 
 	stop := make(chan struct{})
 	go srv.RunOfflineChecker(stop)
+	go srv.RunSlowScheduler(stop)
 
 	httpServer := &http.Server{
 		Addr:              *addr,

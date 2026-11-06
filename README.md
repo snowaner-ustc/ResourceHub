@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-**Phase 2 进行中**：GPU（nvidia-smi）、历史曲线、CPU/内存/GPU 告警、机器分组。详见下方快速启动。
+**Phase 3 进行中**：异步目录 Top-N 下钻 + 目录软配额告警（仅提醒，不拦写入）。详见下方快速启动。
 
 **文档入口 → [docs/README.md](docs/README.md)**
 
@@ -23,7 +23,8 @@
 - **GPU**：nvidia-smi 采集利用率/显存；无卡则标记 unavailable  
 - **历史曲线**：SQLite 短时序，默认保留 7 天；详情页 1h/6h/24h  
 - **分组**：注册 `--group` 或详情页修改，总览可筛选  
-- 目录级分析与软配额走**异步慢路径**（默关、限流）；限额仅告警/提醒，不拦写入  
+- **目录分析**：详情页手动触发异步 Top-N 下钻（禁止从 `/` 全盘扫）；报告带 `as_of`，可 `partial`  
+- **软配额**：策略页配置 `/home/*/*` 等模板；超限只告警/提醒，不拦写入、不自动删除  
 
 ## 快速启动（本地）
 
@@ -58,4 +59,4 @@ docs/     # 设计与规范（入口 docs/README.md）
 
 ## 后续
 
-Phase 3 起：目录 Top-N 下钻与软配额告警。详见 [docs/DESIGN.md](docs/DESIGN.md)。
+Phase 4：通知渠道、权限细化、高可用。详见 [docs/DESIGN.md](docs/DESIGN.md)。

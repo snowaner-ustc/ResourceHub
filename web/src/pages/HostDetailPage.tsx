@@ -4,13 +4,16 @@ import Sparkline from '../Sparkline'
 import {
   fetchHost,
   fetchHostMetrics,
+  fetchQuotaUsages,
   formatBytes,
   formatPercent,
   HostDetail,
   MetricPoint,
   patchHostGroup,
   ProcessInfo,
+  QuotaUsage,
 } from '../api'
+import DiskScanPanel from './DiskScanPanel'
 
 function ProcessTable({ title, rows, showParent }: { title: string; rows: ProcessInfo[]; showParent?: boolean }) {
   if (!rows.length) {
@@ -61,11 +64,16 @@ export default function HostDetailPage() {
   const [hours, setHours] = useState(1)
   const [groupInput, setGroupInput] = useState('')
   const [error, setError] = useState('')
+  const [usages, setUsages] = useState<QuotaUsage[]>([])
   const groupDirty = useRef(false)
 
   useEffect(() => {
     groupDirty.current = false
     setGroupInput('')
+    setData(null)
+    setPoints([])
+    setUsages([])
+    setError('')
   }, [id])
 
   useEffect(() => {
@@ -73,7 +81,7 @@ export default function HostDetailPage() {
     let alive = true
     const load = async () => {
       try {
-        const [d, m] = await Promise.all([
+        const [d, m, u] = await Promise.all([
           fetchHost(id),
           fetchHostMetrics(id, hours, [
             'cpu.usage_percent',
@@ -82,11 +90,13 @@ export default function HostDetailPage() {
             'gpu.max_util_percent',
             'gpu.max_mem_percent',
           ]),
+          fetchQuotaUsages(id).catch(() => [] as QuotaUsage[]),
         ])
         if (!alive) return
         setData(d)
         if (!groupDirty.current) setGroupInput(d.host.group || '')
         setPoints(m.points || [])
+        setUsages(u)
       } catch (e) {
         if (alive) setError((e as Error).message)
       }
@@ -105,7 +115,7 @@ export default function HostDetailPage() {
   }, [points])
 
   if (error) return <p className="error">{error}</p>
-  if (!data) return <p className="muted">加载中…</p>
+  if (!id || !data) return <p className="muted">加载中…</p>
 
   const snap = data.snapshot
   const procs = snap?.processes
@@ -213,7 +223,7 @@ export default function HostDetailPage() {
             <p className="muted">本机无 NVIDIA GPU，或 nvidia-smi 不可用。</p>
           )}
 
-          <h2>磁盘挂载（statfs）</h2>
+          <h2>磁盘挂载（statfs，快路径）</h2>
           <table>
             <thead>
               <tr>
@@ -238,6 +248,44 @@ export default function HostDetailPage() {
               ))}
             </tbody>
           </table>
+
+          <DiskScanPanel key={id} hostId={id} mountpoints={snap.disks.map((d) => d.mountpoint)} />
+
+          <h2>软配额用量</h2>
+          <p className="muted"><Link to="/quota">管理策略</Link> · 超限只告警，不拦写入。用量带采集时刻，不是实时 du。</p>
+          {usages.some((u) => u.partial_scan) ? (
+            <p className="muted">最近一次扫描不完整（超时或目标过多）。未扫到的路径不会自动消失，已删除目录需等一次完整扫描才会从列表和告警中清除。</p>
+          ) : null}
+          {usages.length === 0 ? (
+            <p className="muted">此机器暂无配额扫描结果。</p>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>策略</th>
+                  <th>路径</th>
+                  <th>已用</th>
+                  <th>限额</th>
+                  <th>利用率</th>
+                  <th>as_of</th>
+                </tr>
+              </thead>
+              <tbody>
+                {usages.map((u) => (
+                  <tr key={`${u.policy_id}-${u.path}`}>
+                    <td>{u.policy_name}</td>
+                    <td>{u.path}</td>
+                    <td>{formatBytes(u.used_bytes)}</td>
+                    <td>{formatBytes(u.limit_bytes)}</td>
+                    <td className={u.used_percent >= 100 ? 'error' : u.used_percent >= 80 ? 'warn-text' : ''}>
+                      {formatPercent(u.used_percent)}
+                    </td>
+                    <td className="muted">{u.as_of ? new Date(u.as_of).toLocaleString() : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
 
           <h2>进程</h2>
           {!procs ? (

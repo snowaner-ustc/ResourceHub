@@ -74,6 +74,25 @@ th { font-size: 0.85rem; color: #64748b; }
 .error { color: #b91c1c; }
 .warn-text { color: #b45309; font-weight: 600; }
 
+.banner {
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  color: #92400e;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+button.linkish {
+  background: none;
+  border: none;
+  color: #2563eb;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+}
+button.linkish:hover { text-decoration: underline; }
+
 .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0 24px; }
 .chart { background: #f8fafc; border-radius: 8px; padding: 12px; }
 .chart .label { font-size: 0.85rem; color: #64748b; margin-bottom: 4px; }

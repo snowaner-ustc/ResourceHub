@@ -29,6 +29,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/agent/metrics", s.handleMetrics)
 	mux.HandleFunc("/api/v1/hosts", s.handleHosts)
 	mux.HandleFunc("/api/v1/alerts", s.handleAlerts)
+	mux.HandleFunc("/api/v1/agent/jobs", s.handleAgentJobs)
+	mux.HandleFunc("/api/v1/agent/jobs/", s.handleAgentJobSub)
+	mux.HandleFunc("/api/v1/quota-policies", s.handleQuotaPolicies)
+	mux.HandleFunc("/api/v1/quota-policies/", s.handleQuotaPolicySub)
+	mux.HandleFunc("/api/v1/quota-usages", s.handleQuotaUsages)
 	mux.Handle("/api/v1/hosts/", s.hostRoutes())
 	return cors(mux)
 }
@@ -36,7 +41,7 @@ func (s *Server) Handler() http.Handler {
 func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
@@ -157,6 +162,14 @@ func (s *Server) hostRoutes() http.Handler {
 		}
 		if len(parts) == 2 && parts[1] == "metrics" && r.Method == http.MethodGet {
 			s.handleHostMetrics(w, r, id)
+			return
+		}
+		if len(parts) == 2 && parts[1] == "disk-scans" {
+			s.handleDiskScans(w, r, id)
+			return
+		}
+		if len(parts) == 3 && parts[1] == "disk-scans" {
+			s.handleDiskScanOne(w, r, id, parts[2])
 			return
 		}
 		writeError(w, http.StatusNotFound, "not found")

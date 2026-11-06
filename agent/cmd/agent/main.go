@@ -12,7 +12,7 @@ import (
 	"github.com/snowaner-ustc/ResourceHub/agent/internal/reporter"
 )
 
-const agentVersion = "0.3.0"
+const agentVersion = "0.4.0"
 
 func main() {
 	serverURL := flag.String("server", "http://127.0.0.1:8080", "ResourceHub server URL")
@@ -21,6 +21,7 @@ func main() {
 	interval := flag.Duration("interval", 10*time.Second, "metrics report interval")
 	procInterval := flag.Duration("proc-interval", 30*time.Second, "process scan interval (mid-path)")
 	gpuInterval := flag.Duration("gpu-interval", 15*time.Second, "GPU scan interval")
+	jobPoll := flag.Duration("job-poll", 5*time.Second, "slow-path job poll interval")
 	tokenFile := flag.String("token-file", ".resourcehub-token", "persisted agent token path")
 	flag.Parse()
 
@@ -92,6 +93,8 @@ func main() {
 	}
 
 	report()
+	slowStop := make(chan struct{})
+	go runSlowWorker(client, *jobPoll, slowStop)
 	for {
 		select {
 		case <-ticker.C:
@@ -104,7 +107,48 @@ func main() {
 			g := col.CollectGPUs()
 			log.Printf("gpu scan: available=%v devices=%d duration=%dms", g.Available, len(g.Devices), g.CollectDurationMs)
 		case <-sig:
+			close(slowStop)
 			return
+		}
+	}
+}
+
+func runSlowWorker(client *reporter.Client, poll time.Duration, stop <-chan struct{}) {
+	if poll <= 0 {
+		poll = 5 * time.Second
+	}
+	ticker := time.NewTicker(poll)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+			job, err := client.ClaimJob()
+			if err != nil {
+				log.Printf("claim slow job: %v", err)
+				continue
+			}
+			if job == nil {
+				continue
+			}
+			log.Printf("slow job start id=%s kind=%s", job.ID, job.Kind)
+			res := collector.RunSlowJob(*job)
+			if err := client.SubmitJobResultRetry(job.ID, res, stop); err != nil {
+				log.Printf("slow job submit id=%s: %v", job.ID, err)
+				if !reporter.IsRetryable(err) {
+					log.Printf("slow job not requeued id=%s (client error)", job.ID)
+					continue
+				}
+				status, qerr := client.RequeueJob(job.ID)
+				if qerr != nil {
+					log.Printf("slow job requeue id=%s: %v", job.ID, qerr)
+				} else {
+					log.Printf("slow job requeue id=%s status=%s", job.ID, status)
+				}
+				continue
+			}
+			log.Printf("slow job finish id=%s status=%s err=%s", job.ID, res.Status, res.Error)
 		}
 	}
 }

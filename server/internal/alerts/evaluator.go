@@ -3,6 +3,7 @@ package alerts
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/snowaner-ustc/ResourceHub/server/internal/models"
@@ -155,8 +156,8 @@ func (e *Evaluator) evaluateProcesses(host *models.Host, snap *models.MetricSnap
 	}
 	sum := snap.Processes.Summary
 	payload, _ := json.Marshal(map[string]any{
-		"zombie": sum.Zombie,
-		"total":  sum.Total,
+		"zombie":  sum.Zombie,
+		"total":   sum.Total,
 		"zombies": snap.Processes.Zombies,
 	})
 
@@ -249,4 +250,61 @@ func (e *Evaluator) EvaluateOffline(host *models.Host) error {
 
 func (e *Evaluator) ResolveOffline(hostID string) error {
 	return e.store.ResolveAlerts(hostID, "agent:offline")
+}
+
+// EvaluateQuota fires or resolves soft-quota alerts for the given usages.
+// When complete is false (a partial scan), alerts for paths not in this batch
+// are left unchanged so missing coverage cannot look like a recovery.
+func (e *Evaluator) EvaluateQuota(host *models.Host, policy *models.QuotaPolicy, usages []models.QuotaUsage, complete bool) error {
+	if policy == nil {
+		return nil
+	}
+	prefix := models.QuotaRulePrefix(policy.ID)
+	seen := map[string]struct{}{}
+	for _, u := range usages {
+		rule := models.QuotaRuleType(policy.ID, u.Path)
+		seen[rule] = struct{}{}
+		payload, _ := json.Marshal(map[string]any{
+			"path":         u.Path,
+			"owner":        u.Owner,
+			"used_bytes":   u.UsedBytes,
+			"limit_bytes":  u.LimitBytes,
+			"used_percent": u.UsedPercent,
+			"policy_id":    policy.ID,
+			"soft_limit":   true,
+		})
+		msgSuffix := fmt.Sprintf("%s at %.1f%% of limit on %s (soft limit, writes still allowed)", u.Path, u.UsedPercent, host.Name)
+		if u.UsedPercent >= policy.CriticalPercent {
+			if err := e.fire(host, rule, models.AlertSeverityCritical, "soft quota critical: "+msgSuffix, string(payload)); err != nil {
+				return err
+			}
+			continue
+		}
+		if u.UsedPercent >= policy.WarnPercent {
+			if err := e.fire(host, rule, models.AlertSeverityWarning, "soft quota warning: "+msgSuffix, string(payload)); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := e.store.ResolveAlerts(host.ID, rule); err != nil {
+			return err
+		}
+	}
+	if !complete {
+		return nil
+	}
+	firing, err := e.store.ListFiringAlertsByHost(host.ID)
+	if err != nil {
+		return err
+	}
+	for _, a := range firing {
+		if strings.HasPrefix(a.RuleType, prefix) {
+			if _, ok := seen[a.RuleType]; !ok {
+				if err := e.store.ResolveAlerts(host.ID, a.RuleType); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }
