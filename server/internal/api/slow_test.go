@@ -23,7 +23,7 @@ func TestDiskScanAPIRejectsRootAndIsAsync(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	srv := New(st, alerts.New(st, alerts.DefaultConfig()), time.Minute)
+	srv := New(st, alerts.New(st, alerts.DefaultConfig()), time.Minute, "")
 	h := srv.Handler()
 
 	reg := httptest.NewRequest(http.MethodPost, "/api/v1/agent/register", bytes.NewBufferString(`{"hostname":"h1","name":"n1"}`))
@@ -290,7 +290,7 @@ func TestRequeueReturnsQueued(t *testing.T) {
 	}
 }
 
-func TestOpsPasswordGatesScansNotReads(t *testing.T) {
+func TestNewIgnoresProcessOpsPasswordEnv(t *testing.T) {
 	t.Setenv("RESOURCEHUB_OPS_PASSWORD", "lab-secret")
 	dir := t.TempDir()
 	st, err := store.Open(filepath.Join(dir, "db"))
@@ -298,7 +298,34 @@ func TestOpsPasswordGatesScansNotReads(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	h := New(st, alerts.New(st, alerts.DefaultConfig()), time.Minute).Handler()
+	h := New(st, alerts.New(st, alerts.DefaultConfig()), time.Minute, "").Handler()
+	rw := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/register", bytes.NewBufferString(`{"hostname":"h1","name":"n1"}`))
+	h.ServeHTTP(rw, req)
+	var rr models.RegisterResponse
+	_ = json.Unmarshal(rw.Body.Bytes(), &rr)
+	scanRoot := filepath.Join(dir, "data")
+	if err := os.MkdirAll(scanRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := json.Marshal(map[string]any{"root": scanRoot})
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/hosts/"+rr.HostID+"/disk-scans", bytes.NewReader(body))
+	rw = httptest.NewRecorder()
+	h.ServeHTTP(rw, req)
+	if rw.Code == http.StatusUnauthorized {
+		t.Fatalf("empty New password must not take env: %s", rw.Body.String())
+	}
+}
+
+func TestOpsPasswordGatesScansNotReads(t *testing.T) {
+	dir := t.TempDir()
+	st, err := store.Open(filepath.Join(dir, "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	srv := New(st, alerts.New(st, alerts.DefaultConfig()), time.Minute, "lab-secret")
+	h := srv.Handler()
 
 	rw := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
@@ -357,6 +384,15 @@ func TestOpsPasswordGatesScansNotReads(t *testing.T) {
 	var pol models.QuotaPolicy
 	_ = json.Unmarshal(rw.Body.Bytes(), &pol)
 
+	if err := st.TouchHost(rr.HostID); err != nil {
+		t.Fatal(err)
+	}
+	srv.tickSlow()
+	queued, err := st.ListJobs(rr.HostID, models.JobKindQuotaScan, 20)
+	if err != nil || len(queued) != 0 {
+		t.Fatalf("creating a policy must not enqueue scans, got %+v %v", queued, err)
+	}
+
 	scanBody, _ := json.Marshal(map[string]any{"host_id": rr.HostID, "force": true})
 	rw = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/quota-policies/"+pol.ID+"/scan", bytes.NewReader(scanBody))
@@ -375,7 +411,7 @@ func TestOpsPasswordGatesScansNotReads(t *testing.T) {
 
 func setupQuotaHost(t *testing.T, st *store.Store) (http.Handler, string, string) {
 	t.Helper()
-	srv := New(st, alerts.New(st, alerts.DefaultConfig()), time.Minute)
+	srv := New(st, alerts.New(st, alerts.DefaultConfig()), time.Minute, "")
 	h := srv.Handler()
 	rw := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/register", bytes.NewBufferString(`{"hostname":"h1","name":"n1"}`))

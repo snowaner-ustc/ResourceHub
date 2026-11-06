@@ -5,12 +5,12 @@ export default function OpsPasswordModal() {
   const [open, setOpen] = useState(false)
   const [reason, setReason] = useState('')
   const [value, setValue] = useState('')
-  const resolver = useRef<((v: string | null) => void) | null>(null)
+  const waiters = useRef<Array<(v: string | null) => void>>([])
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     registerOpsPrompt((msg) => new Promise((resolve) => {
-      resolver.current = resolve
+      waiters.current.push(resolve)
       setReason(msg)
       setValue('')
       setOpen(true)
@@ -25,10 +25,10 @@ export default function OpsPasswordModal() {
   if (!open) return null
 
   const finish = (v: string | null) => {
-    const resolve = resolver.current
-    resolver.current = null
+    const pending = waiters.current
+    waiters.current = []
     setOpen(false)
-    resolve?.(v)
+    for (const resolve of pending) resolve(v)
   }
 
   const onSubmit = (e: FormEvent) => {

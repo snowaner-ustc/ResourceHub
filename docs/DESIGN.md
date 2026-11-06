@@ -287,8 +287,8 @@ AlertEvent
 | `GET /api/v1/alerts` | 告警列表 |
 | `POST /api/v1/hosts/:id/disk-scans` | 提交异步目录 Top-N（禁止 `/`）。若配置了 `RESOURCEHUB_OPS_PASSWORD`，需头 `X-Ops-Password` |
 | `GET /api/v1/hosts/:id/disk-scans/:job_id` | 查询分析任务；同 root 6h 内复用缓存 |
-| `GET/POST /api/v1/quota-policies` | 软配额策略（读写策略本身不扫盘，保持开放） |
-| `POST /api/v1/quota-policies/:id/scan` | 手动触发定向扫描；同样可要求运维口令 |
+| `GET/POST /api/v1/quota-policies` | 软配额策略。创建/启用**不会**入队扫描 |
+| `POST /api/v1/quota-policies/:id/scan` | 第一次扫描必须走这里（可要求运维口令）；之后调度器按 interval 续扫 |
 | `GET /api/v1/quota-usages` | 最新用量（只读缓存；`as_of`；最近一次扫描不完整时带 `partial_scan`） |
 | `WS /api/v1/ws/overview` | 可选：推送状态变更 |
 
@@ -387,7 +387,8 @@ AlertEvent
 
 - Agent 一机一密，可轮换、可吊销  
 - **看板只读开放**（实验室内网、人人可信）：打开网页不登录  
-- **慢路径写操作**（手动目录分析 / 配额立即扫描）可用环境变量 `RESOURCEHUB_OPS_PASSWORD` 加口令；未配置则与现在一样不拦截。定时配额扫描仍由 Server 调度，不入口令。  
+- **慢路径写操作**（手动目录分析 / 配额立即扫描）可用环境变量 `RESOURCEHUB_OPS_PASSWORD` 加口令；未配置则与现在一样不拦截。  
+- 创建/启用配额策略不入队 walk：从未成功扫过的策略只有 `POST .../scan` 才会第一次扫。调度器只对已经有 `done` 结果的策略按 interval 续扫。
 - 传输 TLS；内网可 mTLS（二期）  
 - 最小权限：Agent 以非 root 运行（GPU/部分磁盘场景再按需提权说明）  
 - 审计：注册、吊销、告警确认留痕  

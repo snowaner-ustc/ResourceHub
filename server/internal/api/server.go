@@ -4,7 +4,6 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -23,12 +22,12 @@ type Server struct {
 	opsPassword string
 }
 
-func New(st *store.Store, ev *alerts.Evaluator, offlineTTL time.Duration) *Server {
+func New(st *store.Store, ev *alerts.Evaluator, offlineTTL time.Duration, opsPassword string) *Server {
 	return &Server{
 		store:       st,
 		evaluator:   ev,
 		offlineTTL:  offlineTTL,
-		opsPassword: strings.TrimSpace(os.Getenv("RESOURCEHUB_OPS_PASSWORD")),
+		opsPassword: strings.TrimSpace(opsPassword),
 	}
 }
 

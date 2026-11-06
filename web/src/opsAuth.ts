@@ -5,22 +5,37 @@ type PromptFn = (reason: string) => Promise<string | null>
 
 let promptOps: PromptFn = async (reason) => window.prompt(reason)
 
-let guardCache: boolean | undefined
+type Guard = boolean | undefined
+let guardCache: Guard
+let promptInflight: Promise<string | null> | null = null
 
 export function registerOpsPrompt(fn: PromptFn) {
   promptOps = fn
 }
 
-export async function opsGuardEnabled(): Promise<boolean> {
+async function probeOpsGuard(): Promise<Guard> {
   if (guardCache !== undefined) return guardCache
   try {
     const res = await fetch('/api/v1/health')
-    const body = await res.json() as { ops_guard?: boolean }
-    guardCache = !!body.ops_guard
+    if (!res.ok) return undefined
+    const body = await res.json() as { ops_guard?: unknown }
+    if (typeof body.ops_guard === 'boolean') {
+      guardCache = body.ops_guard
+      return guardCache
+    }
   } catch {
-    guardCache = false
+    /* health unreachable or not JSON: do not cache a false "no password needed" */
   }
-  return guardCache
+  return undefined
+}
+
+function askPassword(reason: string): Promise<string | null> {
+  if (!promptInflight) {
+    promptInflight = promptOps(reason).finally(() => {
+      promptInflight = null
+    })
+  }
+  return promptInflight
 }
 
 export function forgetOpsPassword() {
@@ -37,22 +52,32 @@ export class OpsCancelledError extends Error {
 export async function withOpsHeaders(
   run: (headers: Record<string, string>) => Promise<Response>,
 ): Promise<Response> {
-  if (!(await opsGuardEnabled())) {
+  const guard = await probeOpsGuard()
+  if (guard === false) {
     return run({})
   }
+
+  const send = (password: string | null) => {
+    const headers: Record<string, string> = {}
+    if (password) headers[OPS_HEADER] = password
+    return run(headers)
+  }
+
   let password = sessionStorage.getItem(OPS_KEY)
-  if (!password) {
-    password = await promptOps('这次会在机器上扫描目录，请输入运维口令')
+  if (guard === true && !password) {
+    password = await askPassword('这次会在机器上扫描目录，请输入运维口令')
     if (!password) throw new OpsCancelledError()
     sessionStorage.setItem(OPS_KEY, password)
   }
-  let res = await run({ [OPS_HEADER]: password })
+
+  let res = await send(password)
   if (res.status === 401) {
+    guardCache = true
     forgetOpsPassword()
-    password = await promptOps('口令不正确，请重新输入运维口令')
+    password = await askPassword('口令不正确或尚未输入，请输入运维口令')
     if (!password) throw new OpsCancelledError()
     sessionStorage.setItem(OPS_KEY, password)
-    res = await run({ [OPS_HEADER]: password })
+    res = await send(password)
   }
   return res
 }

@@ -25,6 +25,7 @@ export default function QuotaPage() {
   const [limitGiB, setLimitGiB] = useState('100')
   const [group, setGroup] = useState('')
   const [hours, setHours] = useState('24')
+  const [scanningId, setScanningId] = useState('')
 
   const reload = async () => {
     const [p, u] = await Promise.all([fetchQuotaPolicies(), fetchQuotaUsages()])
@@ -77,7 +78,7 @@ export default function QuotaPage() {
     <div className="card">
       <h1>软配额</h1>
       <p className="banner">
-        仅软限制：超限只告警/提醒，<strong>不拦截写入、不自动删除</strong>。扫描走慢路径，不绑定看板刷新。
+        仅软限制：超限只告警/提醒，<strong>不拦截写入、不自动删除</strong>。创建/启用策略不会扫盘；第一次请点「立即扫描」（若配置了口令会在此时询问）。
       </p>
       {error ? <p className="error">{error}</p> : null}
 
@@ -114,7 +115,19 @@ export default function QuotaPage() {
                 <td className="muted">{Math.round(p.scan_interval_seconds / 3600)}h</td>
                 <td><span className={`badge ${p.enabled ? 'online' : 'offline'}`}>{p.enabled ? 'enabled' : 'disabled'}</span></td>
                 <td>
-                  <button type="button" className="linkish" onClick={() => void triggerQuotaScan(p.id).then(reload).catch((e) => { if (!isOpsCancelled(e)) setError((e as Error).message) })}>立即扫描</button>
+                  <button
+                    type="button"
+                    className="linkish"
+                    disabled={!!scanningId}
+                    onClick={() => {
+                      if (scanningId) return
+                      setScanningId(p.id)
+                      void triggerQuotaScan(p.id)
+                        .then(reload)
+                        .catch((e) => { if (!isOpsCancelled(e)) setError((e as Error).message) })
+                        .finally(() => setScanningId(''))
+                    }}
+                  >立即扫描</button>
                   {' · '}
                   <button
                     type="button"
