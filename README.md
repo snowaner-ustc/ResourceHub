@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-**Phase 3 进行中**：异步目录 Top-N 下钻 + 目录软配额告警（仅提醒，不拦写入）。详见下方快速启动。
+**Phase 3 已合入**：异步目录 Top-N 下钻 + 目录软配额告警（仅提醒，不拦写入）。看板只读可随便看；扫盘可选用运维口令。详见下方快速启动。
 
 **文档入口 → [docs/README.md](docs/README.md)**
 
@@ -57,6 +57,14 @@ deploy/   # docker-compose
 docs/     # 设计与规范（入口 docs/README.md）
 ```
 
+扫盘口令（可选）：
+
+```bash
+export RESOURCEHUB_OPS_PASSWORD='your-lab-password'
+make server
+# 打开看板不用登录；点「开始分析」或「立即扫描」时才会要口令
+```
+
 ## 后续
 
-Phase 4：通知渠道、权限细化、高可用。详见 [docs/DESIGN.md](docs/DESIGN.md)。
+Phase 4：通知渠道、高可用。详见 [docs/DESIGN.md](docs/DESIGN.md)。

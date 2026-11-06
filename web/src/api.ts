@@ -1,3 +1,7 @@
+import { withOpsHeaders } from './opsAuth'
+
+export { isOpsCancelled } from './opsAuth'
+
 export type HostSummary = {
   id: string
   name: string
@@ -246,11 +250,11 @@ async function readError(res: Response, fallback: string): Promise<string> {
 }
 
 export async function startDiskScan(hostId: string, root: string, force = false): Promise<SlowJob> {
-  const res = await fetch(`${API}/hosts/${hostId}/disk-scans`, {
+  const res = await withOpsHeaders((ops) => fetch(`${API}/hosts/${hostId}/disk-scans`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...ops },
     body: JSON.stringify({ root, force }),
-  })
+  }))
   if (!res.ok) throw new Error(await readError(res, 'failed to start disk scan'))
   return res.json()
 }
@@ -293,11 +297,11 @@ export async function deleteQuotaPolicy(id: string): Promise<void> {
 }
 
 export async function triggerQuotaScan(id: string, hostId?: string): Promise<void> {
-  const res = await fetch(`${API}/quota-policies/${id}/scan`, {
+  const res = await withOpsHeaders((ops) => fetch(`${API}/quota-policies/${id}/scan`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...ops },
     body: JSON.stringify({ host_id: hostId || '', force: true }),
-  })
+  }))
   if (!res.ok) throw new Error(await readError(res, 'failed to start quota scan'))
 }
 

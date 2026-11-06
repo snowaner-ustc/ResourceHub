@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { DiskEntry, DiskScanReport, formatBytes, SlowJob, fetchDiskScan, startDiskScan } from '../api'
+import { DiskEntry, DiskScanReport, formatBytes, SlowJob, fetchDiskScan, isOpsCancelled, startDiskScan } from '../api'
 
 export default function DiskScanPanel({
   hostId,
@@ -42,7 +42,7 @@ export default function DiskScanPanel({
       setRoot(path)
       setJob(next)
     } catch (e) {
-      setError((e as Error).message)
+      if (!isOpsCancelled(e)) setError((e as Error).message)
     } finally {
       setBusy(false)
     }
@@ -59,7 +59,7 @@ export default function DiskScanPanel({
     <>
       <h2>目录分析（慢路径）</h2>
       <p className="muted">
-        分层统计<strong>直接子目录</strong>体积，用于定位大户。不跟心跳绑定；禁止从 <code>/</code> 全盘扫描。结果带采集时刻，可能非实时。
+        分层统计<strong>直接子目录</strong>体积，用于定位大户。不跟心跳绑定；禁止从 <code>/</code> 全盘扫描。结果带采集时刻，可能非实时。若服务端配置了运维口令，点扫描时才会询问，看看板不用登录。
       </p>
       <form onSubmit={onSubmit} style={{ marginBottom: 12 }}>
         <input

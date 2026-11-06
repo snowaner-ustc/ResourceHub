@@ -64,7 +64,8 @@ ResourceHub 是一个多服务器资源监控系统：各机部署轻量 Agent�
 - [x] 目录级空间分析：异步 Top-N 下钻，定位大户（路径 / owner）  
 - [x] 用户目录**软配额**：按 path 模板限制「每文件夹」大小，超限告警/提醒（不拦写）  
 - [ ] 通知渠道集成  
-- [ ] 更细权限与审计  
+- [x] 慢路径口令：看板只读不登录；手动扫盘/配额扫描可要口令  
+- [ ] 更细权限与审计（全站登录，非本阶段）  
 
 详见 [guides/STORAGE_ATTRIBUTION_AND_QUOTA.md](./guides/STORAGE_ATTRIBUTION_AND_QUOTA.md)。
 

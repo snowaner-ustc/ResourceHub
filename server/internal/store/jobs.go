@@ -75,6 +75,14 @@ func (s *Store) EnqueueQuotaScan(hostID string, policy *models.QuotaPolicy, forc
 			cached.Cached = true
 			return cached, nil
 		}
+		// First scan is manual (ops password). Scheduler only refreshes after a done job.
+		prior, err := s.hasDoneJob(hostID, cacheKey)
+		if err != nil {
+			return nil, err
+		}
+		if !prior {
+			return nil, nil
+		}
 	}
 	timeoutMs := 90000
 	if policy.ScanIntervalSeconds >= 3600 {
@@ -120,6 +128,15 @@ func (s *Store) findActiveJob(hostID, cacheKey string) (*models.Job, error) {
 		return nil, err
 	}
 	return job, nil
+}
+
+func (s *Store) hasDoneJob(hostID, cacheKey string) (bool, error) {
+	var n int
+	err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM jobs WHERE host_id = ? AND cache_key = ? AND status = ?`,
+		hostID, cacheKey, models.JobStatusDone,
+	).Scan(&n)
+	return n > 0, err
 }
 
 func (s *Store) LatestDoneJob(hostID, cacheKey string) (*models.Job, error) {
