@@ -136,10 +136,15 @@ func runSlowWorker(client *reporter.Client, poll time.Duration, stop <-chan stru
 			res := collector.RunSlowJob(*job)
 			if err := client.SubmitJobResultRetry(job.ID, res, stop); err != nil {
 				log.Printf("slow job submit id=%s: %v", job.ID, err)
-				if qerr := client.RequeueJob(job.ID); qerr != nil {
+				if !reporter.IsRetryable(err) {
+					log.Printf("slow job not requeued id=%s (client error)", job.ID)
+					continue
+				}
+				status, qerr := client.RequeueJob(job.ID)
+				if qerr != nil {
 					log.Printf("slow job requeue id=%s: %v", job.ID, qerr)
 				} else {
-					log.Printf("slow job requeued id=%s", job.ID)
+					log.Printf("slow job requeue id=%s status=%s", job.ID, status)
 				}
 				continue
 			}

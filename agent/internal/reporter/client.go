@@ -3,6 +3,7 @@ package reporter
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -10,6 +11,33 @@ import (
 
 	"github.com/snowaner-ustc/ResourceHub/agent/internal/models"
 )
+
+// StatusError is an HTTP response with status >= 400.
+type StatusError struct {
+	Op         string
+	StatusCode int
+	Status     string
+}
+
+func (e *StatusError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s failed: %s", e.Op, e.Status)
+}
+
+// IsRetryable reports whether the error is a transport failure or HTTP 5xx.
+// 4xx client errors are not retried and must not requeue the job.
+func IsRetryable(err error) bool {
+	if err == nil {
+		return false
+	}
+	var se *StatusError
+	if errors.As(err, &se) {
+		return se.StatusCode >= 500
+	}
+	return true
+}
 
 type Client struct {
 	baseURL    string
@@ -137,7 +165,7 @@ func (c *Client) SubmitJobResult(id string, result models.JobResult) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("submit job failed: %s", resp.Status)
+		return &StatusError{Op: "submit job", StatusCode: resp.StatusCode, Status: resp.Status}
 	}
 	return nil
 }
@@ -149,6 +177,9 @@ func (c *Client) SubmitJobResultRetry(id string, result models.JobResult, stop <
 		last = c.SubmitJobResult(id, result)
 		if last == nil {
 			return nil
+		}
+		if !IsRetryable(last) {
+			return last
 		}
 		if i == 4 {
 			break
@@ -165,24 +196,31 @@ func (c *Client) SubmitJobResultRetry(id string, result models.JobResult, stop <
 	return last
 }
 
-func (c *Client) RequeueJob(id string) error {
+func (c *Client) RequeueJob(id string) (string, error) {
 	if c.token == "" {
-		return fmt.Errorf("agent not registered")
+		return "", fmt.Errorf("agent not registered")
 	}
 	req, err := http.NewRequest(http.MethodPost, c.baseURL+"/api/v1/agent/jobs/"+id+"/requeue", nil)
 	if err != nil {
-		return err
+		return "", err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("requeue job failed: %s", resp.Status)
+		return "", &StatusError{Op: "requeue job", StatusCode: resp.StatusCode, Status: resp.Status}
 	}
-	return nil
+	var out struct {
+		Status string `json:"status"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	if out.Status == "" {
+		out.Status = "unknown"
+	}
+	return out.Status, nil
 }
 
 func LoadToken(path string) (string, error) {

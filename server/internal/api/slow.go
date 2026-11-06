@@ -2,11 +2,14 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/snowaner-ustc/ResourceHub/server/internal/models"
+	"github.com/snowaner-ustc/ResourceHub/server/internal/store"
 )
 
 func (s *Server) handleAgentJobs(w http.ResponseWriter, r *http.Request) {
@@ -53,7 +56,12 @@ func (s *Server) handleAgentJobSub(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]string{"status": "requeued"})
+		got, err := s.store.GetJob(job.ID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": got.Status})
 		return
 	}
 	if parts[1] != "result" || r.Method != http.MethodPost {
@@ -65,8 +73,21 @@ func (s *Server) handleAgentJobSub(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
+	if job.Status == models.JobStatusDone || job.Status == models.JobStatusFailed {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "accepted"})
+		return
+	}
+	if job.Status != models.JobStatusRunning {
+		writeError(w, http.StatusBadRequest, "job not running")
+		return
+	}
 	if req.Status == models.JobStatusDone && job.Kind == models.JobKindQuotaScan {
 		if err := s.ingestQuotaResult(host, job, req.Report); err != nil {
+			if isPermanent(err) {
+				_ = s.store.FinishJob(job.ID, host.ID, models.JobStatusFailed, err.Error(), req.Report)
+				writeError(w, http.StatusBadRequest, err.Error())
+				return
+			}
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -78,19 +99,35 @@ func (s *Server) handleAgentJobSub(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "accepted"})
 }
 
+type permanentError struct{ msg string }
+
+func (e *permanentError) Error() string { return e.msg }
+
+func permErr(format string, args ...any) error {
+	return &permanentError{msg: fmt.Sprintf(format, args...)}
+}
+
+func isPermanent(err error) bool {
+	var p *permanentError
+	return errors.As(err, &p)
+}
+
 func (s *Server) ingestQuotaResult(host *models.Host, job *models.Job, report json.RawMessage) error {
 	var params models.QuotaScanParams
 	if err := json.Unmarshal(job.Params, &params); err != nil {
-		return err
+		return permErr("invalid quota_scan params")
 	}
 	policy, err := s.store.GetQuotaPolicy(params.PolicyID)
 	if err != nil {
+		if errors.Is(err, store.ErrPolicyNotFound) {
+			return permErr("quota policy not found")
+		}
 		return err
 	}
 	var rep models.QuotaScanReport
 	if len(report) > 0 {
 		if err := json.Unmarshal(report, &rep); err != nil {
-			return err
+			return permErr("invalid quota report")
 		}
 	}
 	asOf := rep.AsOf
@@ -301,6 +338,10 @@ func (s *Server) handleQuotaUsages(w http.ResponseWriter, r *http.Request) {
 	}
 	list, err := s.store.ListQuotaUsages(r.URL.Query().Get("host_id"), r.URL.Query().Get("policy_id"))
 	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := s.store.AnnotateQuotaUsages(list); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

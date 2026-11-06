@@ -252,6 +252,9 @@ func (e *Evaluator) ResolveOffline(hostID string) error {
 	return e.store.ResolveAlerts(hostID, "agent:offline")
 }
 
+// EvaluateQuota fires or resolves soft-quota alerts for the given usages.
+// When complete is false (a partial scan), alerts for paths not in this batch
+// are left unchanged so missing coverage cannot look like a recovery.
 func (e *Evaluator) EvaluateQuota(host *models.Host, policy *models.QuotaPolicy, usages []models.QuotaUsage, complete bool) error {
 	if policy == nil {
 		return nil

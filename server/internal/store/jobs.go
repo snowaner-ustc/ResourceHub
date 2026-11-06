@@ -122,6 +122,38 @@ func (s *Store) findActiveJob(hostID, cacheKey string) (*models.Job, error) {
 	return job, nil
 }
 
+func (s *Store) LatestDoneJob(hostID, cacheKey string) (*models.Job, error) {
+	row := s.db.QueryRow(
+		`SELECT `+jobColumns+` FROM jobs WHERE host_id = ? AND cache_key = ? AND status = ? AND finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT 1`,
+		hostID, cacheKey, models.JobStatusDone,
+	)
+	job, err := scanJob(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return job, nil
+}
+
+func (s *Store) AnnotateQuotaUsages(usages []models.QuotaUsage) error {
+	type pair struct{ host, policy string }
+	partialFor := map[pair]bool{}
+	for i := range usages {
+		p := pair{usages[i].HostID, usages[i].PolicyID}
+		if _, ok := partialFor[p]; !ok {
+			job, err := s.LatestDoneJob(usages[i].HostID, "quota_scan:"+usages[i].PolicyID)
+			if err != nil {
+				return err
+			}
+			partialFor[p] = job != nil && reportIsPartial(job.Report)
+		}
+		usages[i].PartialScan = partialFor[p]
+	}
+	return nil
+}
+
 func (s *Store) findCachedJob(hostID, cacheKey string, ttl time.Duration) (*models.Job, error) {
 	cutoff := time.Now().UTC().Add(-ttl).Format(time.RFC3339Nano)
 	rows, err := s.db.Query(

@@ -232,6 +232,7 @@ export type QuotaUsage = {
   limit_bytes: number
   used_percent: number
   as_of: string
+  partial_scan?: boolean
 }
 
 async function readError(res: Response, fallback: string): Promise<string> {

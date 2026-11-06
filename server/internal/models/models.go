@@ -294,4 +294,5 @@ type QuotaUsage struct {
 	LimitBytes  uint64    `json:"limit_bytes"`
 	UsedPercent float64   `json:"used_percent"`
 	AsOf        time.Time `json:"as_of"`
+	PartialScan bool      `json:"partial_scan,omitempty"`
 }

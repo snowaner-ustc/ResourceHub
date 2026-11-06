@@ -132,7 +132,10 @@ export default function QuotaPage() {
       )}
 
       <h2>最新用量</h2>
-      <p className="muted">来自最近一次定向扫描缓存，不是实时 du。</p>
+      <p className="muted">来自最近一次定向扫描缓存，不是实时 du。看 as_of 判断新旧。扫描间隔请大于实际 walk 时间，否则超时机会按间隔反复扫。</p>
+      {usages.some((u) => u.partial_scan) ? (
+        <p className="muted">存在不完整扫描：未扫到的路径不会自动消失，已删除目录需等一次完整扫描才会清除。</p>
+      ) : null}
       {usages.length === 0 ? (
         <p className="muted">尚无用量。创建策略后点「立即扫描」，并确保对应机器的 agent 在线。</p>
       ) : (

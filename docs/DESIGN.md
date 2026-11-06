@@ -264,7 +264,16 @@ AlertEvent
 | `POST /api/v1/agent/heartbeat` | 轻量存活（可与 metrics 合并） |
 | `POST /api/v1/agent/metrics` | 上报快路径快照（幂等：按 `collected_at`） |
 | `GET /api/v1/agent/jobs` | Agent 领取一条 queued 慢任务（无则 204） |
-| `POST /api/v1/agent/jobs/:id/result` | 回传磁盘分析 / 配额扫描结果 |
+| `POST /api/v1/agent/jobs/:id/result` | 回传磁盘分析 / 配额扫描结果（见下） |
+| `POST /api/v1/agent/jobs/:id/requeue` | 回传失败后把仍为 `running` 的任务改回 `queued`；已结束则 200 并返回实际 status |
+
+**慢任务回传契约（自定义 Agent 必须遵守）：**
+
+1. 配额结果先入库用量再把 job 标 `done`。终态（`done`/`failed`）再 POST 同一 job 返回 200，**不再 ingest**，避免重放旧报告覆盖新用量。
+2. 业务失败（策略已删、params/report 无法解析）把 job 标 `failed`，HTTP **4xx**。传输失败 / 5xx 才重试；**4xx 不得 requeue**，否则会反复扫盘。
+3. 网络失败时：重试 `.../result`（报告仍在内存里），耗尽后再 `.../requeue`。响应里的 `status` 是 job 当前状态（`queued` / `done` / `failed`），不要假设一定重跑。
+4. `partial: true` 的报告不进入缓存（磁盘 6h / 配额 `scan_interval`）。完整扫描才 `Replace` 用量并 resolve 未出现的路径；部分扫描只 upsert 本批。
+5. `EvaluateQuota(usages, complete)`：`complete=false` 时不得把未扫到的路径当成已恢复。
 
 建议：TLS + 每 Agent 独立 token；支持 gzip。
 
@@ -280,7 +289,7 @@ AlertEvent
 | `GET /api/v1/hosts/:id/disk-scans/:job_id` | 查询分析任务；同 root 6h 内复用缓存 |
 | `GET/POST /api/v1/quota-policies` | 软配额策略 |
 | `POST /api/v1/quota-policies/:id/scan` | 手动触发定向扫描 |
-| `GET /api/v1/quota-usages` | 最新用量（只读缓存） |
+| `GET /api/v1/quota-usages` | 最新用量（只读缓存；`as_of`；最近一次扫描不完整时带 `partial_scan`） |
 | `WS /api/v1/ws/overview` | 可选：推送状态变更 |
 
 **明确禁止：** 任何「同步触发远端全盘扫描并等待结果」的同步 HTTP API。

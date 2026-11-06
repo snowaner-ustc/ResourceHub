@@ -12,6 +12,8 @@ import (
 	"github.com/snowaner-ustc/ResourceHub/server/internal/models"
 )
 
+var ErrPolicyNotFound = errors.New("policy not found")
+
 func (s *Store) CreateQuotaPolicy(p models.QuotaPolicy) (*models.QuotaPolicy, error) {
 	if err := normalizePolicy(&p); err != nil {
 		return nil, err
@@ -94,7 +96,7 @@ func (s *Store) DeleteQuotaPolicy(id string) error {
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return fmt.Errorf("policy not found")
+		return ErrPolicyNotFound
 	}
 	return nil
 }
@@ -104,7 +106,7 @@ func (s *Store) GetQuotaPolicy(id string) (*models.QuotaPolicy, error) {
 	p, err := scanPolicy(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("policy not found")
+			return nil, ErrPolicyNotFound
 		}
 		return nil, err
 	}
@@ -131,6 +133,8 @@ func (s *Store) ListQuotaPolicies() ([]models.QuotaPolicy, error) {
 	return out, rows.Err()
 }
 
+// UpsertQuotaUsages writes measured paths without deleting others.
+// Use this for partial scans so unscanned paths keep their last usage.
 func (s *Store) UpsertQuotaUsages(hostID, policyID string, rows []models.QuotaUsage) error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -158,6 +162,8 @@ func (s *Store) UpsertQuotaUsages(hostID, policyID string, rows []models.QuotaUs
 	return tx.Commit()
 }
 
+// ReplaceQuotaUsages drops previous rows for the host+policy, then inserts `rows`.
+// Use this only for complete scans.
 func (s *Store) ReplaceQuotaUsages(hostID, policyID string, rows []models.QuotaUsage) error {
 	tx, err := s.db.Begin()
 	if err != nil {

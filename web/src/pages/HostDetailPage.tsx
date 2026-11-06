@@ -252,7 +252,10 @@ export default function HostDetailPage() {
           <DiskScanPanel key={id} hostId={id} mountpoints={snap.disks.map((d) => d.mountpoint)} />
 
           <h2>软配额用量</h2>
-          <p className="muted"><Link to="/quota">管理策略</Link> · 超限只告警，不拦写入。</p>
+          <p className="muted"><Link to="/quota">管理策略</Link> · 超限只告警，不拦写入。用量带采集时刻，不是实时 du。</p>
+          {usages.some((u) => u.partial_scan) ? (
+            <p className="muted">最近一次扫描不完整（超时或目标过多）。未扫到的路径不会自动消失，已删除目录需等一次完整扫描才会从列表和告警中清除。</p>
+          ) : null}
           {usages.length === 0 ? (
             <p className="muted">此机器暂无配额扫描结果。</p>
           ) : (
@@ -264,6 +267,7 @@ export default function HostDetailPage() {
                   <th>已用</th>
                   <th>限额</th>
                   <th>利用率</th>
+                  <th>as_of</th>
                 </tr>
               </thead>
               <tbody>
@@ -276,6 +280,7 @@ export default function HostDetailPage() {
                     <td className={u.used_percent >= 100 ? 'error' : u.used_percent >= 80 ? 'warn-text' : ''}>
                       {formatPercent(u.used_percent)}
                     </td>
+                    <td className="muted">{u.as_of ? new Date(u.as_of).toLocaleString() : '—'}</td>
                   </tr>
                 ))}
               </tbody>
