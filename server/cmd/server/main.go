@@ -27,7 +27,12 @@ func main() {
 	defer st.Close()
 
 	ev := alerts.New(st, alerts.DefaultConfig())
-	srv := api.New(st, ev, *offlineAfter)
+	srv := api.New(st, ev, *offlineAfter, os.Getenv("RESOURCEHUB_OPS_PASSWORD"))
+	if srv.OpsGuardEnabled() {
+		log.Printf("ops password enabled: POST disk-scans / quota scans require X-Ops-Password")
+	} else {
+		log.Printf("ops password disabled: set RESOURCEHUB_OPS_PASSWORD to gate directory scans")
+	}
 
 	stop := make(chan struct{})
 	go srv.RunOfflineChecker(stop)

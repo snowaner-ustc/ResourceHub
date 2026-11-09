@@ -98,6 +98,28 @@ button.linkish:hover { text-decoration: underline; }
 .chart .label { font-size: 0.85rem; color: #64748b; margin-bottom: 4px; }
 input, select, button { font: inherit; padding: 4px 8px; }
 
+.ops-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 16px;
+}
+.ops-dialog {
+  background: #fff;
+  border-radius: 10px;
+  padding: 20px;
+  width: min(420px, 100%);
+  box-shadow: 0 10px 40px rgba(15, 23, 42, 0.2);
+  display: grid;
+  gap: 10px;
+}
+.ops-dialog input { width: 100%; }
+.ops-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
 @media (max-width: 800px) {
   .charts { grid-template-columns: 1fr; }
 }

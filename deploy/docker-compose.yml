@@ -5,6 +5,8 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8080:8080"
+    environment:
+      RESOURCEHUB_OPS_PASSWORD: ${RESOURCEHUB_OPS_PASSWORD:-}
     volumes:
       - server-data:/data
     command: ["-addr", ":8080", "-db", "/data/resourcehub.db"]

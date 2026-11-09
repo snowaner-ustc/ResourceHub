@@ -196,6 +196,47 @@ func TestFinishJobIdempotentAndRequeue(t *testing.T) {
 	}
 }
 
+func TestQuotaScanNotAutoEnqueuedUntilFirstDone(t *testing.T) {
+	dir := t.TempDir()
+	st, err := Open(filepath.Join(dir, "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	p, err := st.CreateQuotaPolicy(models.QuotaPolicy{
+		Name: "home-sub", Enabled: true, PathPattern: "/home/*/*", LimitBytes: 100,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	host, err := st.RegisterHost(models.RegisterRequest{Name: "n1", Hostname: "h1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, err := st.EnqueueQuotaScan(host.HostID, p, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job != nil {
+		t.Fatalf("new policy must not auto-enqueue, got %+v", job)
+	}
+	forced, err := st.EnqueueQuotaScan(host.HostID, p, true)
+	if err != nil || forced == nil {
+		t.Fatalf("manual first scan: %v %+v", err, forced)
+	}
+	if _, err := st.ClaimJob(host.HostID); err != nil {
+		t.Fatal(err)
+	}
+	rep, _ := json.Marshal(map[string]any{"partial": false, "targets": []any{}})
+	if err := st.FinishJob(forced.ID, host.HostID, models.JobStatusDone, "", rep); err != nil {
+		t.Fatal(err)
+	}
+	cached, err := st.EnqueueQuotaScan(host.HostID, p, false)
+	if err != nil || cached == nil || !cached.Cached {
+		t.Fatalf("after first done, scheduler should reuse cache: %+v %v", cached, err)
+	}
+}
+
 func TestFailStaleJobs(t *testing.T) {
 	dir := t.TempDir()
 	st, err := Open(filepath.Join(dir, "test.db"))

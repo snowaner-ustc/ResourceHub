@@ -1,6 +1,7 @@
 package api
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -12,14 +13,26 @@ import (
 	"github.com/snowaner-ustc/ResourceHub/server/internal/store"
 )
 
+const opsPasswordHeader = "X-Ops-Password"
+
 type Server struct {
-	store      *store.Store
-	evaluator  *alerts.Evaluator
-	offlineTTL time.Duration
+	store       *store.Store
+	evaluator   *alerts.Evaluator
+	offlineTTL  time.Duration
+	opsPassword string
 }
 
-func New(st *store.Store, ev *alerts.Evaluator, offlineTTL time.Duration) *Server {
-	return &Server{store: st, evaluator: ev, offlineTTL: offlineTTL}
+func New(st *store.Store, ev *alerts.Evaluator, offlineTTL time.Duration, opsPassword string) *Server {
+	return &Server{
+		store:       st,
+		evaluator:   ev,
+		offlineTTL:  offlineTTL,
+		opsPassword: strings.TrimSpace(opsPassword),
+	}
+}
+
+func (s *Server) OpsGuardEnabled() bool {
+	return s.opsPassword != ""
 }
 
 func (s *Server) Handler() http.Handler {
@@ -42,7 +55,7 @@ func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Ops-Password")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -52,7 +65,19 @@ func cors(next http.Handler) http.Handler {
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "ops_guard": s.OpsGuardEnabled()})
+}
+
+func (s *Server) requireOps(w http.ResponseWriter, r *http.Request) bool {
+	if !s.OpsGuardEnabled() {
+		return true
+	}
+	got := r.Header.Get(opsPasswordHeader)
+	if subtle.ConstantTimeCompare([]byte(got), []byte(s.opsPassword)) != 1 {
+		writeError(w, http.StatusUnauthorized, "ops password required")
+		return false
+	}
+	return true
 }
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
