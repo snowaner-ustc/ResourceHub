@@ -7,6 +7,9 @@ services:
       - "8080:8080"
     environment:
       RESOURCEHUB_OPS_PASSWORD: ${RESOURCEHUB_OPS_PASSWORD:-}
+      RESOURCEHUB_FEISHU_NOTIFY: ${RESOURCEHUB_FEISHU_NOTIFY:-}
+      RESOURCEHUB_FEISHU_WEBHOOK: ${RESOURCEHUB_FEISHU_WEBHOOK:-}
+      RESOURCEHUB_FEISHU_SECRET: ${RESOURCEHUB_FEISHU_SECRET:-}
     volumes:
       - server-data:/data
     command: ["-addr", ":8080", "-db", "/data/resourcehub.db"]

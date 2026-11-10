@@ -330,7 +330,7 @@ func TestOpsPasswordGatesScansNotReads(t *testing.T) {
 	rw := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
 	h.ServeHTTP(rw, req)
-	if rw.Code != http.StatusOK || !strings.Contains(rw.Body.String(), `"ops_guard":true`) {
+	if rw.Code != http.StatusOK || !strings.Contains(rw.Body.String(), `"ops_guard":true`) || !strings.Contains(rw.Body.String(), `"feishu_notify":false`) {
 		t.Fatalf("health %d %s", rw.Code, rw.Body.String())
 	}
 

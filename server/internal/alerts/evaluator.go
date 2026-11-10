@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/snowaner-ustc/ResourceHub/server/internal/models"
+	"github.com/snowaner-ustc/ResourceHub/server/internal/notify"
 	"github.com/snowaner-ustc/ResourceHub/server/internal/store"
 )
 
@@ -49,10 +50,19 @@ func DefaultConfig() Config {
 type Evaluator struct {
 	store  *store.Store
 	config Config
+	notify notify.Notifier
 }
 
 func New(st *store.Store, cfg Config) *Evaluator {
 	return &Evaluator{store: st, config: cfg}
+}
+
+func (e *Evaluator) SetNotifier(n notify.Notifier) {
+	e.notify = n
+}
+
+func (e *Evaluator) NotifyEnabled() bool {
+	return e != nil && e.notify != nil && e.notify.Enabled()
 }
 
 func (e *Evaluator) EvaluateSnapshot(host *models.Host, snap *models.MetricSnapshot) error {
@@ -77,7 +87,7 @@ func (e *Evaluator) EvaluateSnapshot(host *models.Host, snap *models.MetricSnaps
 			}
 			continue
 		}
-		if err := e.store.ResolveAlerts(host.ID, ruleType); err != nil {
+		if err := e.resolve(host, ruleType); err != nil {
 			return err
 		}
 	}
@@ -100,8 +110,8 @@ func (e *Evaluator) evaluateGauges(host *models.Host, snap *models.MetricSnapsho
 		return err
 	}
 	if snap.GPUs == nil || !snap.GPUs.Available {
-		_ = e.store.ResolveAlerts(host.ID, "gpu.high")
-		_ = e.store.ResolveAlerts(host.ID, "gpu.memory.high")
+		_ = e.resolve(host, "gpu.high")
+		_ = e.resolve(host, "gpu.memory.high")
 		return nil
 	}
 	var maxUtil, maxMem float64
@@ -147,7 +157,7 @@ func (e *Evaluator) gauge(host *models.Host, rule, metric string, current, warn,
 		}
 		return nil
 	}
-	return e.store.ResolveAlerts(host.ID, rule)
+	return e.resolve(host, rule)
 }
 
 func (e *Evaluator) evaluateProcesses(host *models.Host, snap *models.MetricSnapshot) error {
@@ -178,13 +188,13 @@ func (e *Evaluator) evaluateProcesses(host *models.Host, snap *models.MetricSnap
 			}
 		}
 	} else {
-		if err := e.store.ResolveAlerts(host.ID, "process.zombie"); err != nil {
+		if err := e.resolve(host, "process.zombie"); err != nil {
 			return err
 		}
-		if err := e.store.ResolveAlerts(host.ID, "process.zombie.persistent"); err != nil {
+		if err := e.resolve(host, "process.zombie.persistent"); err != nil {
 			return err
 		}
-		if err := e.store.ResolveAlerts(host.ID, "process.zombie.high"); err != nil {
+		if err := e.resolve(host, "process.zombie.high"); err != nil {
 			return err
 		}
 	}
@@ -195,7 +205,7 @@ func (e *Evaluator) evaluateProcesses(host *models.Host, snap *models.MetricSnap
 			return err
 		}
 	} else if sum.Zombie > 0 {
-		if err := e.store.ResolveAlerts(host.ID, "process.zombie.high"); err != nil {
+		if err := e.resolve(host, "process.zombie.high"); err != nil {
 			return err
 		}
 	}
@@ -208,7 +218,7 @@ func (e *Evaluator) evaluateProcesses(host *models.Host, snap *models.MetricSnap
 			return err
 		}
 	} else {
-		if err := e.store.ResolveAlerts(host.ID, ruleCount); err != nil {
+		if err := e.resolve(host, ruleCount); err != nil {
 			return err
 		}
 	}
@@ -230,7 +240,7 @@ func (e *Evaluator) fire(host *models.Host, ruleType string, severity models.Ale
 		id = existing.ID
 		firedAt = existing.FiredAt
 	}
-	return e.store.UpsertAlert(models.Alert{
+	if err := e.store.UpsertAlert(models.Alert{
 		ID:       id,
 		HostID:   host.ID,
 		HostName: host.Name,
@@ -240,7 +250,48 @@ func (e *Evaluator) fire(host *models.Host, ruleType string, severity models.Ale
 		Message:  message,
 		Payload:  payload,
 		FiredAt:  firedAt,
+	}); err != nil {
+		return err
+	}
+	e.emit(notify.Event{
+		Kind:     notify.KindFiring,
+		HostID:   host.ID,
+		HostName: host.Name,
+		RuleType: ruleType,
+		Severity: severity,
+		Message:  message,
 	})
+	return nil
+}
+
+func (e *Evaluator) resolve(host *models.Host, ruleType string) error {
+	if host == nil {
+		return nil
+	}
+	return e.resolveHost(host.ID, host.Name, ruleType)
+}
+
+func (e *Evaluator) resolveHost(hostID, hostName, ruleType string) error {
+	n, err := e.store.ResolveAlerts(hostID, ruleType)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		e.emit(notify.Event{
+			Kind:     notify.KindResolved,
+			HostID:   hostID,
+			HostName: hostName,
+			RuleType: ruleType,
+		})
+	}
+	return nil
+}
+
+func (e *Evaluator) emit(ev notify.Event) {
+	if e.notify == nil {
+		return
+	}
+	e.notify.Notify(ev)
 }
 
 func (e *Evaluator) EvaluateOffline(host *models.Host) error {
@@ -249,7 +300,11 @@ func (e *Evaluator) EvaluateOffline(host *models.Host) error {
 }
 
 func (e *Evaluator) ResolveOffline(hostID string) error {
-	return e.store.ResolveAlerts(hostID, "agent:offline")
+	name := hostID
+	if h, err := e.store.HostByID(hostID); err == nil && h != nil {
+		name = h.Name
+	}
+	return e.resolveHost(hostID, name, "agent:offline")
 }
 
 // EvaluateQuota fires or resolves soft-quota alerts for the given usages.
@@ -286,7 +341,7 @@ func (e *Evaluator) EvaluateQuota(host *models.Host, policy *models.QuotaPolicy,
 			}
 			continue
 		}
-		if err := e.store.ResolveAlerts(host.ID, rule); err != nil {
+		if err := e.resolve(host, rule); err != nil {
 			return err
 		}
 	}
@@ -300,7 +355,7 @@ func (e *Evaluator) EvaluateQuota(host *models.Host, policy *models.QuotaPolicy,
 	for _, a := range firing {
 		if strings.HasPrefix(a.RuleType, prefix) {
 			if _, ok := seen[a.RuleType]; !ok {
-				if err := e.store.ResolveAlerts(host.ID, a.RuleType); err != nil {
+				if err := e.resolve(host, a.RuleType); err != nil {
 					return err
 				}
 			}

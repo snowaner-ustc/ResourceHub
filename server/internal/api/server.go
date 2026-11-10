@@ -65,7 +65,11 @@ func cors(next http.Handler) http.Handler {
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "ops_guard": s.OpsGuardEnabled()})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":        "ok",
+		"ops_guard":     s.OpsGuardEnabled(),
+		"feishu_notify": s.evaluator.NotifyEnabled(),
+	})
 }
 
 func (s *Server) requireOps(w http.ResponseWriter, r *http.Request) bool {

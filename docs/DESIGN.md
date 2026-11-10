@@ -281,6 +281,7 @@ AlertEvent
 
 | 接口 | 说明 |
 |------|------|
+| `GET /api/v1/health` | `ops_guard`、`feishu_notify`（均未配置则为 false） |
 | `GET /api/v1/hosts` | 列表 + 关键状态 + 关键容量摘要 |
 | `GET /api/v1/hosts/:id` | 详情最新快照 |
 | `GET /api/v1/hosts/:id/metrics?from&to&names=` | 时序（只读存储） |
@@ -348,6 +349,8 @@ AlertEvent
 
 评估在 **Server 侧** 基于已入库快照进行，避免在 Agent 上堆复杂规则引擎（Agent 仅可做本地紧急自保护日志）。
 
+可选飞书群机器人：未配置 `RESOURCEHUB_FEISHU_WEBHOOK` 时不发送。`RESOURCEHUB_FEISHU_NOTIFY=0` 可在保留 webhook 的情况下关闭。只在新 firing / 升级 / resolve 时 POST 文本，不跟快路径心跳。
+
 ---
 
 ## 9. 前端信息架构
@@ -392,6 +395,7 @@ AlertEvent
 - 传输 TLS；内网可 mTLS（二期）  
 - 最小权限：Agent 以非 root 运行（GPU/部分磁盘场景再按需提权说明）  
 - 审计：注册、吊销、告警确认留痕  
+- 飞书 webhook / 签名密钥视为机密，只放环境变量，不进 git
 
 ---
 
@@ -427,8 +431,8 @@ AlertEvent
 
 ### Phase 4 — 硬化
 
-- [ ] **4a** 慢路径口令（目录/配额扫描）；看板不强制登录  
-- [ ] 通知渠道（飞书/Slack/邮件）  
+- [x] **4a** 慢路径口令（目录/配额扫描）；看板不强制登录  
+- [x] 可选飞书群机器人通知（webhook；不配则关闭）  
 - 高可用、SLO 大盘（更后）  
 
 ---

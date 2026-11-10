@@ -529,11 +529,15 @@ func nullableTime(t *time.Time) any {
 	return t.UTC().Format(time.RFC3339Nano)
 }
 
-func (s *Store) ResolveAlerts(hostID, ruleType string) error {
+func (s *Store) ResolveAlerts(hostID, ruleType string) (int64, error) {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	_, err := s.db.Exec(`UPDATE alerts SET status = ?, resolved_at = ? WHERE host_id = ? AND rule_type = ? AND status = ?`,
+	res, err := s.db.Exec(`UPDATE alerts SET status = ?, resolved_at = ? WHERE host_id = ? AND rule_type = ? AND status = ?`,
 		models.AlertStatusResolved, now, hostID, ruleType, models.AlertStatusFiring)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
 }
 
 func (s *Store) GetFiringAlert(hostID, ruleType string) (*models.Alert, error) {
