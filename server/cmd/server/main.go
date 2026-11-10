@@ -11,6 +11,7 @@ import (
 
 	"github.com/snowaner-ustc/ResourceHub/server/internal/alerts"
 	"github.com/snowaner-ustc/ResourceHub/server/internal/api"
+	"github.com/snowaner-ustc/ResourceHub/server/internal/notify"
 	"github.com/snowaner-ustc/ResourceHub/server/internal/store"
 )
 
@@ -27,6 +28,13 @@ func main() {
 	defer st.Close()
 
 	ev := alerts.New(st, alerts.DefaultConfig())
+	notifier := notify.FromEnv(os.Getenv("RESOURCEHUB_FEISHU_NOTIFY"), os.Getenv("RESOURCEHUB_FEISHU_WEBHOOK"), os.Getenv("RESOURCEHUB_FEISHU_SECRET"))
+	ev.SetNotifier(notifier)
+	if notifier.Enabled() {
+		log.Printf("feishu notify enabled")
+	} else {
+		log.Printf("feishu notify disabled (leave RESOURCEHUB_FEISHU_WEBHOOK unset, or RESOURCEHUB_FEISHU_NOTIFY=0)")
+	}
 	srv := api.New(st, ev, *offlineAfter, os.Getenv("RESOURCEHUB_OPS_PASSWORD"))
 	if srv.OpsGuardEnabled() {
 		log.Printf("ops password enabled: POST disk-scans / quota scans require X-Ops-Password")

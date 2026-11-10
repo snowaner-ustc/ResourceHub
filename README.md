@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-**Phase 3 已合入**：异步目录 Top-N 下钻 + 目录软配额告警（仅提醒，不拦写入）。看板只读可随便看；扫盘可选用运维口令。详见下方快速启动。
+**Phase 3 已合入**：异步目录 Top-N 下钻 + 目录软配额告警（仅提醒，不拦写入）。看板只读可随便看；扫盘可选用运维口令；飞书通知可选。详见下方快速启动。
 
 **文档入口 → [docs/README.md](docs/README.md)**
 
@@ -65,6 +65,20 @@ make server
 # 打开看板不用登录；点「开始分析」或「立即扫描」时才会要口令
 ```
 
+飞书告警（可选，不配也能用）：
+
+```bash
+# 默认关闭。打开：在飞书群添加「自定义机器人」，把 webhook 填上即可
+export RESOURCEHUB_FEISHU_WEBHOOK='https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx'
+# 机器人开了签名校验时再配：
+export RESOURCEHUB_FEISHU_SECRET='your-sign-secret'
+# 临时关掉（webhook 可以留着）：
+# export RESOURCEHUB_FEISHU_NOTIFY=0
+make server
+```
+
+群机器人若要求「自定义关键词」，消息里已带 `ResourceHub`。只在告警新触发、升级或恢复时发一条，不会跟心跳刷屏。
+
 ## 后续
 
-Phase 4：通知渠道、高可用。详见 [docs/DESIGN.md](docs/DESIGN.md)。
+Phase 4：高可用、SLO。详见 [docs/DESIGN.md](docs/DESIGN.md)。
